@@ -11,7 +11,7 @@ intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# 🚫 Exact filenames to block (both as attachments and inside links)
+# 🚫 Exact filenames to block ONLY when they are inside a link
 FORBIDDEN_FILENAMES = [
     "IMG_7625.jpg",
     "IMG_7632.jpg",
@@ -29,7 +29,7 @@ async def github_timer():
 @bot.event
 async def on_ready():
     print(f'✅ Operational! Logged in as {bot.user}')
-    await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="suspicious links and images"))
+    await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="suspicious links"))
     
     # Start the timer as soon as the bot is ready
     bot.loop.create_task(github_timer())
@@ -40,30 +40,26 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    trigger_moderation = False
-    detected_file = ""
+    detected_files = set()
 
-    # 1. Check if any forbidden filename is in the message text (e.g., pasted Discord links)
-    for forbidden_name in FORBIDDEN_FILENAMES:
-        if forbidden_name in message.content:
-            trigger_moderation = True
-            detected_file = forbidden_name
-            print(f"🔎 Found blacklisted link/text sent by {message.author}: {detected_file}")
-            break
+    # Split the message into words to isolate links
+    words = message.content.split()
 
-    # 2. Check if any forbidden filename is in the attachments (if not caught by step 1)
-    if not trigger_moderation and message.attachments:
-        for attachment in message.attachments:
-            exact_filename = attachment.filename
-            print(f"🔎 Scanning file sent by {message.author}: {exact_filename}")
-            if exact_filename in FORBIDDEN_FILENAMES:
-                trigger_moderation = True
-                detected_file = exact_filename
-                break
+    # Check each word individually
+    for word in words:
+        # Verify if the word is a URL (even if wrapped in < > to hide previews)
+        if "http://" in word or "https://" in word:
+            # If it IS a link, check if it contains a forbidden filename
+            for forbidden_name in FORBIDDEN_FILENAMES:
+                if forbidden_name in word:
+                    detected_files.add(forbidden_name)
 
-    # If a threat is detected (link OR file), execute the punishment
-    if trigger_moderation:
-        print(f"🚨 EXACT MATCH FOUND! Triggering moderation for {message.author}...")
+    # If AT LEAST ONE forbidden link is detected, execute the punishment
+    if len(detected_files) > 0:
+        
+        # Format the detected files into a clean text list
+        detected_list_str = "\n".join([f"👉 `{f}`" for f in detected_files])
+        print(f"🚨 FORBIDDEN LINK FOUND! Triggering moderation for {message.author}. Detected:\n{detected_list_str}")
         
         try:
             # 1. Delete the entire message instantly
@@ -72,18 +68,19 @@ async def on_message(message):
 
             # 2. Timeout the member for 1 week
             duration = datetime.timedelta(weeks=1)
-            await message.author.timeout(duration, reason="Exact blacklisted file/link detected.")
+            await message.author.timeout(duration, reason="Blacklisted link detected.")
             print(f"⏳ Timed out {message.author} for 1 week.")
 
             # 3. Create the stylish embed message
             embed = discord.Embed(
                 title="⚠️ Threat Neutralized",
-                description=f"An unauthorized file or link from {message.author.mention} has been deleted.",
+                description=f"An unauthorized link from {message.author.mention} has been deleted.",
                 color=0xff0000, # Red color code
                 timestamp=datetime.datetime.now()
             )
             
-            embed.add_field(name="Blocked Content", value=f"`{detected_file}`", inline=False)
+            # Show ALL the links that were caught in that single message
+            embed.add_field(name="Blocked Link Content(s)", value=detected_list_str, inline=False)
             embed.add_field(name="Penalty", value="⏳ **1-week timeout** applied instantly.", inline=False)
             
             # Thumbnail with the culprit's avatar
