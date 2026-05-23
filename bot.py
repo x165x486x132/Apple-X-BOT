@@ -13,10 +13,10 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 
 # 🚫 Exact names of the files to block
 FORBIDDEN_FILENAMES = [
-    "img_7625.jpg",
-    "img_7632.jpg",
-    "img_7620.jpg",
-    "untitled.jpg"
+    "IMG_7625.jpg",
+    "IMG_7632.jpg",
+    "IMG_7620.jpg",
+    "Untitled.jpg"
 ]
 
 # The timer that will stop the bot right before the fatal 6h GitHub limit
