@@ -40,26 +40,32 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    detected_files = set()
+    # We will store tuples: (filename, full_url) to create clickable links
+    detected_data = []
 
     # Split the message into words to isolate links
     words = message.content.split()
 
     # Check each word individually
     for word in words:
-        # Verify if the word is a URL (even if wrapped in < > to hide previews)
+        # Verify if the word is a URL
         if "http://" in word or "https://" in word:
-            # If it IS a link, check if it contains a forbidden filename
+            # Clean the URL just in case they wrap it in < > to hide previews
+            clean_url = word.strip("<>")
+            
+            # Check if it contains a forbidden filename
             for forbidden_name in FORBIDDEN_FILENAMES:
-                if forbidden_name in word:
-                    detected_files.add(forbidden_name)
+                if forbidden_name in clean_url:
+                    # Avoid duplicates in our list
+                    if not any(f == forbidden_name for f, u in detected_data):
+                        detected_data.append((forbidden_name, clean_url))
 
     # If AT LEAST ONE forbidden link is detected, execute the punishment
-    if len(detected_files) > 0:
+    if len(detected_data) > 0:
         
-        # Format the detected files into a clean text list
-        detected_list_str = "\n".join([f"👉 `{f}`" for f in detected_files])
-        print(f"🚨 FORBIDDEN LINK FOUND! Triggering moderation for {message.author}. Detected:\n{detected_list_str}")
+        # Format the detected files into AESTHETIC BLUE HYPERLINKS
+        # Syntax: [Text to display](URL)
+        detected_list_str = "\n".join([f"🔗 **[{name}]({url})**" for name, url in detected_data])
         
         try:
             # 1. Delete the entire message instantly
@@ -71,22 +77,28 @@ async def on_message(message):
             await message.author.timeout(duration, reason="Blacklisted link detected.")
             print(f"⏳ Timed out {message.author} for 1 week.")
 
-            # 3. Create the stylish embed message
+            # 3. Create the PREMIUM stylish embed message
             embed = discord.Embed(
-                title="⚠️ Threat Neutralized",
-                description=f"An unauthorized link from {message.author.mention} has been deleted.",
-                color=0xff0000, # Red color code
+                title="🚨 Security Alert: Malicious Link Blocked",
+                description=f"An unauthorized link sent by {message.author.mention} has been intercepted and removed from the server.",
+                color=0x2b2d31, # A sleek dark gray/black color (Discord's theme) for a premium look, or you can put 0xff0000 for red.
                 timestamp=datetime.datetime.now()
             )
             
-            # Show ALL the links that were caught in that single message
-            embed.add_field(name="Blocked Link Content(s)", value=detected_list_str, inline=False)
-            embed.add_field(name="Penalty", value="⏳ **1-week timeout** applied instantly.", inline=False)
+            # Show the blue clickable links
+            embed.add_field(name="📂 Evidence (Clickable Links)", value=detected_list_str, inline=False)
+            embed.add_field(name="⚖️ Punishment Applied", value="⏳ **1-Week Timeout**", inline=False)
             
-            # Thumbnail with the culprit's avatar
+            # Avatar of the culprit as the thumbnail (top right)
             avatar_url = message.author.avatar.url if message.author.avatar else message.author.default_avatar.url
             embed.set_thumbnail(url=avatar_url)
             
+            # SHOWCASE: Display the very first forbidden image directly in the Embed
+            # (If you don't want the image to be visible to everyone, just delete the line below)
+            embed.set_image(url=detected_data[0][1])
+            
+            embed.set_footer(text="Automated Security System", icon_url=bot.user.avatar.url if bot.user.avatar else None)
+
             # Send the warning in the channel
             await message.channel.send(embed=embed)
             
