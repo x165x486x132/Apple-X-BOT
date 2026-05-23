@@ -11,7 +11,7 @@ intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# 🚫 Exact names of the files to block
+# 🚫 Exact filenames with exact casing as requested
 FORBIDDEN_FILENAMES = [
     "IMG_7625.jpg",
     "IMG_7632.jpg",
@@ -21,10 +21,9 @@ FORBIDDEN_FILENAMES = [
 
 # The timer that will stop the bot right before the fatal 6h GitHub limit
 async def github_timer():
-    # 5 hours, 58 minutes (358 minutes in total)
     delay_seconds = (5 * 3600) + (58 * 60)
     await asyncio.sleep(delay_seconds)
-    print("⏳ 6h limit approaching: Clean and voluntary shutdown of the bot to allow restart without crashing.")
+    print("⏳ 6h limit approaching: Clean and voluntary shutdown of the bot.")
     await bot.close()
 
 @bot.event
@@ -41,17 +40,27 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    # If the message contains attachments (images, files)
+    # Check if the message has attachments
     if message.attachments:
         for attachment in message.attachments:
-            if attachment.filename.lower() in FORBIDDEN_FILENAMES:
+            
+            # We keep the exact filename (NO lowercase conversion)
+            exact_filename = attachment.filename
+            print(f"🔎 Scanning file sent by {message.author}: {exact_filename}")
+            
+            # Check for EXACT match in the list
+            if exact_filename in FORBIDDEN_FILENAMES:
+                print(f"🚨 EXACT MATCH FOUND! Triggering moderation for {message.author}...")
+                
                 try:
-                    # 1. Delete the image instantly
+                    # 1. Delete the entire message instantly
                     await message.delete()
+                    print(f"🗑️ Deleted message from {message.author}")
 
                     # 2. Timeout the member for 1 week
                     duration = datetime.timedelta(weeks=1)
-                    await message.author.timeout(duration, reason="Blacklisted file detected by the system.")
+                    await message.author.timeout(duration, reason="Exact blacklisted file detected.")
+                    print(f"⏳ Timed out {message.author} for 1 week.")
 
                     # 3. Create the stylish embed message
                     embed = discord.Embed(
@@ -75,7 +84,7 @@ async def on_message(message):
                     break
 
                 except discord.Forbidden:
-                    print("⚠️ ERROR: The bot must have a role HIGHER than the members, and 'Manage Messages' + 'Timeout Members' permissions.")
+                    print(f"⚠️ ERROR: Missing permissions! The bot role MUST be higher than {message.author}'s role, and have 'Manage Messages' & 'Timeout Members'.")
                 except Exception as e:
                     print(f"⚠️ System error: {e}")
 
@@ -86,4 +95,4 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 if TOKEN:
     bot.run(TOKEN)
 else:
-    print("❌ Error: Token not found.")
+    print("❌ Error: Token not found. Check your GitHub Secrets.")
