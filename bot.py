@@ -11,7 +11,7 @@ intents.members = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# 🚫 Exact filenames with exact casing as requested
+# 🚫 Exact filenames to block (both as attachments and inside links)
 FORBIDDEN_FILENAMES = [
     "IMG_7625.jpg",
     "IMG_7632.jpg",
@@ -29,7 +29,7 @@ async def github_timer():
 @bot.event
 async def on_ready():
     print(f'✅ Operational! Logged in as {bot.user}')
-    await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="suspicious images"))
+    await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="suspicious links and images"))
     
     # Start the timer as soon as the bot is ready
     bot.loop.create_task(github_timer())
@@ -40,53 +40,63 @@ async def on_message(message):
     if message.author.bot:
         return
 
-    # Check if the message has attachments
-    if message.attachments:
+    trigger_moderation = False
+    detected_file = ""
+
+    # 1. Check if any forbidden filename is in the message text (e.g., pasted Discord links)
+    for forbidden_name in FORBIDDEN_FILENAMES:
+        if forbidden_name in message.content:
+            trigger_moderation = True
+            detected_file = forbidden_name
+            print(f"🔎 Found blacklisted link/text sent by {message.author}: {detected_file}")
+            break
+
+    # 2. Check if any forbidden filename is in the attachments (if not caught by step 1)
+    if not trigger_moderation and message.attachments:
         for attachment in message.attachments:
-            
-            # We keep the exact filename (NO lowercase conversion)
             exact_filename = attachment.filename
             print(f"🔎 Scanning file sent by {message.author}: {exact_filename}")
-            
-            # Check for EXACT match in the list
             if exact_filename in FORBIDDEN_FILENAMES:
-                print(f"🚨 EXACT MATCH FOUND! Triggering moderation for {message.author}...")
-                
-                try:
-                    # 1. Delete the entire message instantly
-                    await message.delete()
-                    print(f"🗑️ Deleted message from {message.author}")
+                trigger_moderation = True
+                detected_file = exact_filename
+                break
 
-                    # 2. Timeout the member for 1 week
-                    duration = datetime.timedelta(weeks=1)
-                    await message.author.timeout(duration, reason="Exact blacklisted file detected.")
-                    print(f"⏳ Timed out {message.author} for 1 week.")
+    # If a threat is detected (link OR file), execute the punishment
+    if trigger_moderation:
+        print(f"🚨 EXACT MATCH FOUND! Triggering moderation for {message.author}...")
+        
+        try:
+            # 1. Delete the entire message instantly
+            await message.delete()
+            print(f"🗑️ Deleted message from {message.author}")
 
-                    # 3. Create the stylish embed message
-                    embed = discord.Embed(
-                        title="⚠️ Threat Neutralized",
-                        description=f"An unauthorized file from {message.author.mention} has been deleted.",
-                        color=0xff0000, # Red color code
-                        timestamp=datetime.datetime.now()
-                    )
-                    
-                    embed.add_field(name="Blocked File", value=f"`{attachment.filename}`", inline=False)
-                    embed.add_field(name="Penalty", value="⏳ **1-week timeout** applied instantly.", inline=False)
-                    
-                    # Thumbnail with the culprit's avatar
-                    avatar_url = message.author.avatar.url if message.author.avatar else message.author.default_avatar.url
-                    embed.set_thumbnail(url=avatar_url)
-                    
-                    # Send the warning in the channel
-                    await message.channel.send(embed=embed)
-                    
-                    # Stop checking other files in the same message to avoid double timeout
-                    break
+            # 2. Timeout the member for 1 week
+            duration = datetime.timedelta(weeks=1)
+            await message.author.timeout(duration, reason="Exact blacklisted file/link detected.")
+            print(f"⏳ Timed out {message.author} for 1 week.")
 
-                except discord.Forbidden:
-                    print(f"⚠️ ERROR: Missing permissions! The bot role MUST be higher than {message.author}'s role, and have 'Manage Messages' & 'Timeout Members'.")
-                except Exception as e:
-                    print(f"⚠️ System error: {e}")
+            # 3. Create the stylish embed message
+            embed = discord.Embed(
+                title="⚠️ Threat Neutralized",
+                description=f"An unauthorized file or link from {message.author.mention} has been deleted.",
+                color=0xff0000, # Red color code
+                timestamp=datetime.datetime.now()
+            )
+            
+            embed.add_field(name="Blocked Content", value=f"`{detected_file}`", inline=False)
+            embed.add_field(name="Penalty", value="⏳ **1-week timeout** applied instantly.", inline=False)
+            
+            # Thumbnail with the culprit's avatar
+            avatar_url = message.author.avatar.url if message.author.avatar else message.author.default_avatar.url
+            embed.set_thumbnail(url=avatar_url)
+            
+            # Send the warning in the channel
+            await message.channel.send(embed=embed)
+            
+        except discord.Forbidden:
+            print(f"⚠️ ERROR: Missing permissions! The bot role MUST be higher than {message.author}'s role, and have 'Manage Messages' & 'Timeout Members'.")
+        except Exception as e:
+            print(f"⚠️ System error: {e}")
 
     await bot.process_commands(message)
 
