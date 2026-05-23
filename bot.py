@@ -55,7 +55,7 @@ async def github_timer():
 @bot.event
 async def on_ready():
     print(f'✅ Operational! Logged in as {bot.user}')
-    await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="suspicious links"))
+    await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="roblox"))
     
     # Update the member count as soon as the bot boots up
     for guild in bot.guilds:
