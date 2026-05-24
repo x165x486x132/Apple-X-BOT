@@ -18,7 +18,7 @@ STATS_CHANNEL_ID = os.getenv("CHANNEL_ID")
 # --- WHITELIST CONFIGURATION ---
 REPO_NAME = "x165x486x132/Apple-X-Key"    # 🟢 CORRIGÉ : Dépôt officiel public
 FILE_PATH = "hwid_db.json"               
-ROLE_PREMIUM_ID = 1498644256712163358    # Premium/Booster Role ID
+ROLE_PREMIUM_ID = 1498644209840951468    # Premium/Booster Role ID
 
 # =========================================================================
 # 📂 GITHUB API UTILS
