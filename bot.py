@@ -148,7 +148,7 @@ async def whitelist(interaction: discord.Interaction, hwid: str):
     db, sha = get_github_db()
     user_id_str = str(interaction.user.id)
 
-    # Save the HWID mapping to their Discord ID directly
+    # Save HWID
     db[user_id_str] = {
         "hwid": hwid,
         "username": str(interaction.user)
@@ -158,7 +158,7 @@ async def whitelist(interaction: discord.Interaction, hwid: str):
     
     if success:
         script_to_copy = f'```lua\nloadstring(game:HttpGet("https://raw.githubusercontent.com/Tamachiru/AppleX/refs/heads/main/Game4"))()\n```'
-        await interaction.followup.send(f"✅ **You have been successfully whitelisted!**\n\nYour device is now registered. You can run the loader directly without any key requirements:\n{script_to_copy}\n\n*Note: Please wait 1 or 2 minutes for GitHub to register changes before running the script.*")
+        await interaction.followup.send(f"✅ **You have been whitelisted successfully!**\n\nYour device is now registered. You can run the loader directly, bypassing key screens:\n{script_to_copy}\n\n*Note: Please wait 1 or 2 minutes for GitHub to save your registration before executing.*")
     else:
         await interaction.followup.send("❌ Error saving to GitHub. Please check if the `GH_API_TOKEN` secret is correctly configured.")
 
