@@ -17,7 +17,7 @@ GH_API_TOKEN = os.getenv("GH_API_TOKEN")
 STATS_CHANNEL_ID = os.getenv("CHANNEL_ID")
 
 # --- HWID CONFIGURATION ---
-REPO_NAME = "x165x486x132/Apple-X-Key"    # Your public database repository
+REPO_NAME = "x165x486x132/Apple-X-Key"    # 🟢 CORRIGÉ : Dépôt officiel public
 FILE_PATH = "hwid_db.json"               
 ROLE_PREMIUM_ID = 1498644209840951468    # Premium/Booster Role ID
 
@@ -77,62 +77,6 @@ class AppleXBot(commands.Bot):
 bot = AppleXBot()
 
 # =========================================================================
-# 🧹 AUTOMATED PREMIUM CLEANUP (Runs on startup / Every 6 hours)
-# =========================================================================
-async def cleanup_inactive_premium_users():
-    await bot.wait_until_ready()
-    await asyncio.sleep(10) # Safe buffer to ensure guilds are cached
-    
-    print("🧹 Starting automated premium whitelist cleanup...")
-    db, sha = get_github_db()
-    if not db:
-        print("⚠️ Whitelist database empty or could not be fetched. Cleanup aborted.")
-        return
-        
-    if not bot.guilds:
-        print("⚠️ Bot is not in any server. Cleanup aborted.")
-        return
-        
-    guild = bot.guilds[0] # Primary server
-    changed = False
-    users_to_remove = []
-    
-    for user_id_str in list(db.keys()):
-        try:
-            user_id = int(user_id_str)
-            # Fetch directly from Discord API (safer than cache)
-            member = await guild.fetch_member(user_id)
-            
-            # Check if the user still has the Premium role
-            has_role = any(role.id == ROLE_PREMIUM_ID for role in member.roles)
-            if not has_role:
-                print(f"❌ Removing {member.name} (Discord ID: {user_id_str}) - Missing Premium Role.")
-                users_to_remove.append(user_id_str)
-                
-        except discord.NotFound:
-            # User is no longer in the server
-            print(f"❌ Removing Discord ID {user_id_str} - User left the server.")
-            users_to_remove.append(user_id_str)
-        except Exception as e:
-            print(f"⚠️ Error checking Discord ID {user_id_str}: {e}")
-            
-    # Delete inactive users from db
-    for uid in users_to_remove:
-        if uid in db:
-            del db[uid]
-            changed = True
-            
-    # Update GitHub if changes were made
-    if changed:
-        success = update_github_db(db, sha)
-        if success:
-            print("✅ Database cleanup successfully pushed to GitHub.")
-        else:
-            print("❌ Failed to push cleaned database to GitHub.")
-    else:
-        print("✨ Whitelist is already clean. No inactive premium users detected.")
-
-# =========================================================================
 # 📊 STATISTICS & LIFETIME TIMER
 # =========================================================================
 async def update_member_count(guild):
@@ -169,9 +113,7 @@ async def on_ready():
     for guild in bot.guilds:
         await update_member_count(guild)
         
-    # Launch background tasks
     bot.loop.create_task(github_timer())
-    bot.loop.create_task(cleanup_inactive_premium_users()) # 👈 Lancement du nettoyeur automatique
 
 @bot.event
 async def on_member_join(member):
