@@ -1,239 +1,345 @@
-import discord
-from discord.ext import commands
-from discord import app_commands
-import datetime
-import os
-import asyncio
-import requests
-import base64
-import json
+-- =========================================================================
+-- // 1. HYBRID AUTHENTICATION SYSTEM (PREMIUM USERNAME / 24H MEMBER KEY)
+-- =========================================================================
+local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
 
-# =========================================================================
-# ⚙️ GLOBAL CONFIGURATION
-# =========================================================================
-TOKEN = os.getenv("DISCORD_TOKEN")
-GH_API_TOKEN = os.getenv("GH_API_TOKEN") 
-STATS_CHANNEL_ID = os.getenv("CHANNEL_ID")
+local SECRET_PASSWORD = "FDGJ084MKLJGDL146515KGREFEZE654HRJ" -- Password for 24h key decryption
 
-# --- HWID CONFIGURATION ---
-REPO_NAME = "x165x486x132/Apple-X-Key"    # Your public database repository
-FILE_PATH = "hwid_db.json"               
-ROLE_PREMIUM_ID = 1498644209840951468    # Premium/Booster Role ID
+local isPremium = false
+local useKeySystem = true
+local validKeys = {}
 
-# --- ANTI-MALICIOUS LINK CONFIGURATION ---
-FORBIDDEN_FILENAMES = [
-    "IMG_7625.jpg", "IMG_7625.jpeg",
-    "IMG_7632.jpg", "IMG_7632.jpeg",
-    "IMG_7620.jpg", "IMG_7620.jpeg",
-    "Untitled.jpg", "Untitled.jpeg",
-    "image.jpg", "image.jpeg"
-]
+-- Clean username helper
+local myUsername = string.lower(Players.LocalPlayer.Name)
 
-FORBIDDEN_LINKS = [
-    "roblox-scam.com",    
-    "discord-nitro.gift", 
-    "steamspecial.com"    
-]
+-- Decryption utilities
+local function decodeB64(data)
+    local b = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+    data = string.gsub(data, '[^'..b..'=]', '')
+    return (data:gsub('.', function(x)
+        if (x == '=') then return '' end
+        local r,f='',(b:find(x)-1)
+        for i=6,1,-1 do r=r..(f%2^i-f%2^(i-1)>0 and '1' or '0') end
+        return r;
+    end):gsub('%d%d%d?%d?%d?%d?%d?%d?', function(x)
+        if (#x ~= 8) then return '' end
+        local c=0
+        for i=1,8 do c=c+(x:sub(i,i)=='1' and 2^(8-i) or 0) end
+        return string.char(c)
+    end))
+end
 
-# =========================================================================
-# 📂 GITHUB API UTILS
-# =========================================================================
-def get_github_db():
-    url = f"https://api.github.com/repos/{REPO_NAME}/contents/{FILE_PATH}"
-    headers = {"Authorization": f"token {GH_API_TOKEN}"}
-    r = requests.get(url, headers=headers)
-    if r.status_code == 200:
-        data = r.json()
-        content = base64.b64decode(data['content']).decode('utf-8')
-        return json.loads(content), data['sha']
-    return {}, None
+local function decryptXOR(encrypted_text, password)
+    local decrypted = ""
+    for i = 1, #encrypted_text do
+        local char_code = string.byte(encrypted_text, i)
+        local key_code = string.byte(password, ((i - 1) % #password) + 1)
+        decrypted = decrypted .. string.char(bit32.bxor(char_code, key_code))
+    end
+    return decrypted
+end
 
-def update_github_db(json_data, sha):
-    url = f"https://api.github.com/repos/{REPO_NAME}/contents/{FILE_PATH}"
-    headers = {"Authorization": f"token {GH_API_TOKEN}"}
-    content_b64 = base64.b64encode(json.dumps(json_data, indent=4).encode('utf-8')).decode('utf-8')
-    payload = {"message": "🤖 Update HWID Database", "content": content_b64}
-    if sha:
-        payload["sha"] = sha
-    r = requests.put(url, headers=headers, json=payload)
-    return r.status_code in [200, 201]
+-- A. Check if the Roblox Username is whitelisted (Premium Status)
+pcall(function()
+    local db_url = "https://raw.githubusercontent.com/x165x486x132/Apple-X-Key/main/hwid_db.json?nocache=" .. tostring(os.time())
+    local response = game:HttpGet(db_url)
+    if response then
+        local db = HttpService:JSONDecode(response)
+        for _, data in pairs(db) do
+            if data.username and string.lower(data.username) == myUsername then
+                isPremium = true
+                useKeySystem = false -- Bypasses key screen completely (Premium Mode)
+                break
+            end
+        end
+    end
+end)
 
-# =========================================================================
-# 🤖 BOT INITIALIZATION
-# =========================================================================
-intents = discord.Intents.default()
-intents.message_content = True
-intents.members = True 
-
-class AppleXBot(commands.Bot):
-    def __init__(self):
-        super().__init__(command_prefix="!", intents=intents)
-
-    async def setup_hook(self):
-        await self.tree.sync()
-        print("✅ Slash commands successfully synchronized.")
-
-bot = AppleXBot()
-
-# =========================================================================
-# 📊 STATISTICS & LIFETIME TIMER
-# =========================================================================
-async def update_member_count(guild):
-    if not STATS_CHANNEL_ID:
-        return
-    try:
-        channel_id = int(STATS_CHANNEL_ID)
-        channel = guild.get_channel(channel_id)
-        if channel:
-            member_count = guild.member_count
-            new_name = f"👥 Members: {member_count}"
-            if channel.name != new_name:
-                await channel.edit(name=new_name)
-                print(f"📊 Updated stats channel name to: {new_name}")
-    except discord.RateLimited:
-        print("⏳ Rate limited by Discord API for channel renaming. Waiting...")
-    except Exception as e:
-        print(f"⚠️ Failed to update stats channel: {e}")
-
-async def github_timer():
-    delay_seconds = (5 * 3600) + (58 * 60)
-    await asyncio.sleep(delay_seconds)
-    print("⏳ 6h limit approaching. Voluntary graceful shutdown.")
-    await bot.close()
-
-# =========================================================================
-# 🟢 EVENTS
-# =========================================================================
-@bot.event
-async def on_ready():
-    print(f'✅ Bot is online! Logged in as {bot.user}')
-    await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="roblox"))
+-- B. If not Premium (meaning they are a "Member"), fetch and decrypt the daily 24H Member Key
+if not isPremium then
+    pcall(function()
+        local rawURL = "https://raw.githubusercontent.com/Tamachiru/Apple-X-Key/main/key.txt?nocache=" .. tostring(os.time())
+        local rawResponse = game:HttpGet(rawURL)
+        if rawResponse then
+            local fetchedText = rawResponse:gsub("%s+", "")
+            if fetchedText:sub(1, 6) == "APPLEX" then 
+                table.insert(validKeys, fetchedText)
+            else
+                local s1, d1 = pcall(decodeB64, fetchedText)
+                if s1 and d1 then
+                    local s2, d2 = pcall(decryptXOR, d1, SECRET_PASSWORD)
+                    if s2 and type(d2) == "string" and d2:sub(1, 6) == "APPLEX" then 
+                        table.insert(validKeys, d2:gsub("%s+", ""))
+                    end
+                end
+            end
+        end
+    end)
     
-    for guild in bot.guilds:
-        await update_member_count(guild)
-        
-    bot.loop.create_task(github_timer())
+    -- Safety Fallback: if daily key fails to fetch, inject a secure placeholder so the prompt cannot be bypassed
+    if #validKeys == 0 then
+        table.insert(validKeys, "APPLEX-OFFLINE-KEY-SAFETY-9982")
+    end
+end
 
-@bot.event
-async def on_member_join(member):
-    print(f"👤 {member.name} joined.")
-    await update_member_count(member.guild)
+-- =========================================================================
+-- // 2. CONFIGURATION & CORE ENVIRONMENT
+-- =========================================================================
+local CONFIG = {
+    HubName = isPremium and "🍏 Apple X // Premium" or "🍏 Apple X // Member",
+    LoadingTitle = "Injecting Apple X Modules...",
+    LoadingSubtitle = isPremium and "Welcome back, Premium User!" or "Please enter the 24H Key!",
+    DiscordInviteCode = "65fma5wJUe",
+    KeySaveFileName = "AppleX24HR",
+    TabMainName = "🚀 Features & Farming",
+    TabHubName = "🌐 Hub",
+}
 
-@bot.event
-async def on_member_remove(member):
-    print(f"👤 {member.name} left.")
-    await update_member_count(member.guild)
+local RunService = game:GetService("RunService")
+local VirtualUser = game:GetService("VirtualUser")
+local player = Players.LocalPlayer
 
-# =========================================================================
-# 🔑 PREMIUM SLASH COMMANDS (HWID SYSTEM)
-# =========================================================================
-@bot.tree.command(name="get_hwid", description="Get the Lua code to copy your HWID")
-async def get_hwid(interaction: discord.Interaction):
-    script = "```lua\nsetclipboard(game:GetService('RbxAnalyticsService'):GetClientId())\n```"
-    await interaction.response.send_message(
-        f"🛠 *How to get your HWID?*\nRun this line in your Roblox executor. Your HWID will be copied to your clipboard:\n{script}", 
-        ephemeral=True
-    )
+pcall(function()
+    local inviteLink = "https://discord.gg/" .. CONFIG.DiscordInviteCode
+    if setclipboard then setclipboard(inviteLink) end
+    local req = (syn and syn.request) or (http and http.request) or http_request or (fluxus and fluxus.request) or request
+    if req then 
+        req({ Url = "http://127.0.0.1:6463/rpc?v=1", Method = "POST",
+            Headers = { ["Content-Type"] = "application/json", ["Origin"] = "https://discord.com" },
+            Body = HttpService:JSONEncode({ cmd = "INVITE_BROWSER", nonce = HttpService:GenerateGUID(false), args = { code = CONFIG.DiscordInviteCode } }) 
+        })
+    end
+end)
 
-@bot.tree.command(name="whitelist", description="Whitelist your HWID for Apple X Premium access")
-@app_commands.describe(hwid="Your Roblox HWID (Run /get_hwid to copy it)")
-async def whitelist(interaction: discord.Interaction, hwid: str):
-    # Premium check
-    if not any(role.id == ROLE_PREMIUM_ID for role in interaction.user.roles):
-        await interaction.response.send_message("❌ **Access Denied.** This script is only for server boosters and premium users.", ephemeral=True)
-        return
+-- Anti-AFK
+player.Idled:Connect(function()
+    pcall(function()
+        VirtualUser:Button2Down(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+        task.wait(1)
+        VirtualUser:Button2Up(Vector2.new(0,0), workspace.CurrentCamera.CFrame)
+    end)
+end)
 
-    await interaction.response.defer(ephemeral=True) 
+local Options = { isPhantom = false, autoWinRace = false, postRaceAction = "None", expandCombo = false, comboSizeMultiplier = 3, showPreview = false }
+local wasInRace = false
+local cachedPersonalCar = nil
+local cachedTriggerParts = {}
+local backupColliders = { Collider = nil, Hardbox = nil } 
+local lastScanTime = 0
+local safeGui = (gethui and gethui()) or game:GetService("CoreGui")
+local ESP_Folder = safeGui:FindFirstChild("AppleX_ESP")
+if not ESP_Folder then
+    local s, e = pcall(function() ESP_Folder = Instance.new("Folder"); ESP_Folder.Name = "AppleX_ESP"; ESP_Folder.Parent = safeGui end)
+    if not s then ESP_Folder = Instance.new("Folder"); ESP_Folder.Name = "AppleX_ESP"; ESP_Folder.Parent = player:WaitForChild("PlayerGui") end
+else ESP_Folder:ClearAllChildren() end
+
+local function getActiveCar()
+    local char = player.Character
+    if char then
+        local humanoid = char:FindFirstChild("Humanoid")
+        if humanoid and humanoid.SeatPart then
+            local current = humanoid.SeatPart
+            while current and current ~= workspace do
+                if current:IsA("Model") and current:FindFirstChild("Body") then return current end
+                current = current.Parent
+            end
+        end
+    end
+    local carsFolder = workspace:FindFirstChild("Cars")
+    if carsFolder then
+        for _, car in ipairs(carsFolder:GetChildren()) do
+            local owner = car:FindFirstChild("Owner")
+            if owner and owner.Value == player.Name then return car end
+        end
+    end
+    return nil
+end
+
+local function refreshCarCache(car)
+    cachedPersonalCar = car
+    backupColliders.Collider = nil
+    backupColliders.Hardbox = nil
+    cachedTriggerParts = {}
+    ESP_Folder:ClearAllChildren()
+    if not car then return end
     
-    db, sha = get_github_db()
-    user_id_str = str(interaction.user.id)
+    local body = car:FindFirstChild("Body")
+    if body then
+        local targetNames = { ["LeftComboTrigger"] = true, ["LeftTrigger"] = true, ["RightComboTrigger"] = true, ["RightTrigger"] = true }
+        for _, pt in ipairs(body:GetDescendants()) do
+            if pt:IsA("BasePart") and targetNames[pt.Name] then
+                if not pt:GetAttribute("OriginalSize") then pt:SetAttribute("OriginalSize", pt.Size) end
+                pt.Massless = true
+                pt.CastShadow = false
+                pt.CustomPhysicalProperties = PhysicalProperties.new(0, 0, 0, 0, 0)
+                table.insert(cachedTriggerParts, pt)
+                
+                local box = Instance.new("SelectionBox")
+                box.Name = pt.Name .. "_ESP"
+                box.Adornee = pt
+                box.LineThickness = 0.05
+                box.Color3 = Color3.fromRGB(0, 255, 255)
+                box.SurfaceTransparency = 1 
+                box.Visible = Options.showPreview
+                box.Parent = ESP_Folder
+            end
+        end
+    end
+end
 
-    # Save HWID
-    db[user_id_str] = {
-        "hwid": hwid,
-        "username": str(interaction.user)
+local function safeTeleport(targetCFrame)
+    local inRaceStatus = player:FindFirstChild("InRace")
+    if inRaceStatus and inRaceStatus:IsA("BoolValue") and inRaceStatus.Value == true then return end
+    local targetCar = getActiveCar()
+    if targetCar then
+        local root = targetCar.PrimaryPart or (targetCar:FindFirstChild("Body") and targetCar.Body:FindFirstChildWhichIsA("BasePart"))
+        if root then root.AssemblyLinearVelocity = Vector3.zero; root.AssemblyAngularVelocity = Vector3.zero end
+        targetCar:PivotTo(targetCFrame * CFrame.new(0, 2, 0))
+    else
+        local char = player.Character
+        if char then char:PivotTo(targetCFrame * CFrame.new(0, 2, 0)) end
+    end
+end
+
+RunService.Heartbeat:Connect(function(deltaTime)
+    local inRaceStatus = player:FindFirstChild("InRace")
+    local isCurrentlyRacing = (inRaceStatus and inRaceStatus:IsA("BoolValue") and inRaceStatus.Value == true)
+    local activeCar = getActiveCar()
+    local currentValidParts = 0
+
+    if activeCar and activeCar == cachedPersonalCar then
+        for _, pt in ipairs(cachedTriggerParts) do if pt and pt.Parent then currentValidParts = currentValidParts + 1 end end
+    end
+    if activeCar ~= cachedPersonalCar or (activeCar and currentValidParts < 4) then
+        if tick() - lastScanTime > 0.5 then lastScanTime = tick(); refreshCarCache(activeCar) end
+    end
+
+    if activeCar then
+        local body = activeCar:FindFirstChild("Body")
+        if body then
+            local curCol = body:FindFirstChild("HitboxCollider")
+            local curHard = body:FindFirstChild("HitboxHard")
+            if curCol and not backupColliders.Collider then backupColliders.Collider = curCol:Clone() end
+            if curHard and not backupColliders.Hardbox then backupColliders.Hardbox = curHard:Clone() end
+            
+            if Options.isPhantom and isCurrentlyRacing then
+                if curCol then curCol:Destroy() end
+                if curHard then curHard:Destroy() end
+            else
+                if not curCol and backupColliders.Collider then curCol = backupColliders.Collider:Clone(); curCol.Parent = body end
+                if not curHard and backupColliders.Hardbox then curHard = backupColliders.Hardbox:Clone(); curHard.Parent = body end
+                local targetCollision = not Options.isPhantom
+                if curCol and curCol.CanCollide ~= targetCollision then curCol.CanCollide = targetCollision end
+                if curHard and curHard.CanCollide ~= targetCollision then curHard.CanCollide = targetCollision end
+            end
+            
+            for _, trg in ipairs(cachedTriggerParts) do
+                if trg and trg.Parent then
+                    if trg.CanCollide then trg.CanCollide = false end
+                    local baseSize = trg:GetAttribute("OriginalSize")
+                    if baseSize then
+                        local targetSize = Options.expandCombo and (baseSize * Options.comboSizeMultiplier) or baseSize
+                        if (trg.Size - targetSize).Magnitude > 0.05 then trg.Size = targetSize end
+                    end
+                    if ESP_Folder then
+                        local esp = ESP_Folder:FindFirstChild(trg.Name .. "_ESP")
+                        if esp and esp.Visible ~= Options.showPreview then esp.Visible = Options.showPreview end
+                    end
+                end
+            end
+        end
+    end
+
+    if Options.autoWinRace and isCurrentlyRacing then
+        local raceFolder = workspace:FindFirstChild("RaceFinish")
+        if raceFolder then
+            local finishLine = raceFolder:FindFirstChild("RaceFinish")
+            if finishLine and activeCar then
+                local root = activeCar.PrimaryPart or activeCar:FindFirstChildWhichIsA("BasePart", true)
+                if root then root.AssemblyLinearVelocity = Vector3.zero; root.AssemblyAngularVelocity = Vector3.zero end
+                activeCar:PivotTo(finishLine.CFrame * CFrame.new(0, 2, 0))
+            end
+        end
+    end
+
+    if wasInRace and not isCurrentlyRacing then
+        task.delay(0.5, function()
+            if Options.postRaceAction == "Main Spawn" then safeTeleport(CFrame.new(1753, 10, 22447))
+            elseif Options.postRaceAction == "Race Start" then safeTeleport(CFrame.new(1842, 10, 22587)) end
+        end)
+    end
+    wasInRace = isCurrentlyRacing 
+end)
+
+-- =========================================================================
+-- // 3. RAYFIELD WINDOW DYNAMIC INITIALIZATION
+-- =========================================================================
+local success, Rayfield = pcall(function() return loadstring(game:HttpGet('https://sirius.menu/rayfield'))() end)
+if not success then return end
+
+local windowConfig = {
+   Name = CONFIG.HubName,
+   LoadingTitle = CONFIG.LoadingTitle,
+   LoadingSubtitle = CONFIG.LoadingSubtitle,
+   ConfigurationSaving = { Enabled = false },
+   KeySystem = useKeySystem, -- true for members, false for premium
+}
+
+if useKeySystem then
+    windowConfig.KeySettings = {
+        Title = "Apple X | Key Verification",
+        Subtitle = "Join our Discord to get the daily key!",
+        Note = "Premium boosters get automatic lifetime access (no keys needed).",
+        FileName = CONFIG.KeySaveFileName,
+        SaveKey = true, 
+        GrabKeyFromSite = false,
+        Key = validKeys -- Dynamic daily key validation
     }
+end
 
-    success = update_github_db(db, sha)
-    
-    if success:
-        script_to_copy = f'```lua\nloadstring(game:HttpGet("https://raw.githubusercontent.com/Tamachiru/AppleX/refs/heads/main/Game4"))()\n```'
-        await interaction.followup.send(f"✅ **You have been whitelisted successfully!**\n\nYour device is now registered. You can run the loader directly, bypassing key screens:\n{script_to_copy}\n\n*Note: Please wait 1 or 2 minutes for GitHub to save your registration before executing.*")
-    else:
-        await interaction.followup.send("❌ Error saving to GitHub. Please check if the `GH_API_TOKEN` secret is correctly configured.")
+local Window = Rayfield:CreateWindow(windowConfig)
 
-# =========================================================================
-# 🛡️ ANTI-MALICIOUS LINK ENGINE
-# =========================================================================
-@bot.event
-async def on_message(message):
-    if message.author.bot:
-        return
+local TabMain = Window:CreateTab(CONFIG.TabMainName, 4483362458)
 
-    detected_data = []
-    words = message.content.split()
+TabMain:CreateSection("🏎️ Vehicle & Hitbox Manipulations")
+TabMain:CreateToggle({Name = "👻 No Collisions (Traffic)", CurrentValue = false, Callback = function(V) Options.isPhantom = V end})
+TabMain:CreateToggle({Name = "👁️ Hitbox Cuts (ESP Outline)", CurrentValue = false, Callback = function(V) Options.showPreview = V end})
+TabMain:CreateToggle({Name = "🎯 Hitbox Cuts", CurrentValue = false, Callback = function(V) Options.expandCombo = V end})
+TabMain:CreateSlider({Name = "Hitbox Cuts Scaler", Range = {1, 35}, Increment = 1, Suffix = "x Size", CurrentValue = 3, Callback = function(V) Options.comboSizeMultiplier = V end})
 
-    for word in words:
-        word_lower = word.lower()
-        clean_url = word.strip("<>")
-        
-        for forbidden_link in FORBIDDEN_LINKS:
-            if forbidden_link.lower() in word_lower:
-                if not any(f == forbidden_link for f, u in detected_data):
-                    detected_data.append((forbidden_link, clean_url))
+TabMain:CreateSection("🤖 Auto Farm & Teleportation")
+TabMain:CreateToggle({Name = "🚀 Instant Finish", CurrentValue = false, Callback = function(V) Options.autoWinRace = V end})
+TabMain:CreateDropdown({
+    Name = "📌 Behavior Set: Once a race ends...",
+    Options = {"None (Stay there)", "Return to Main Spawn", "Warp Back to Race Start"},
+    CurrentOption = {"None (Stay there)"}, MultipleOptions = false,
+    Callback = function(Option)
+        if Option[1] == "Return to Main Spawn" then Options.postRaceAction = "Main Spawn"
+        elseif Option[1] == "Warp Back to Race Start" then Options.postRaceAction = "Race Start"
+        else Options.postRaceAction = "None" end
+    end,
+})
+TabMain:CreateButton({Name = "🌍 Teleport to Home Base", Callback = function() safeTeleport(CFrame.new(1753, 10, 22447)) end})
+TabMain:CreateButton({Name = "🏎️ Teleport to Race Start Gate", Callback = function() safeTeleport(CFrame.new(1842, 10, 22587)) end})
 
-        if "http://" in word_lower or "https://" in word_lower:
-            for forbidden_name in FORBIDDEN_FILENAMES:
-                if forbidden_name.lower() in clean_url.lower():
-                    if not any(f == forbidden_name for f, u in detected_data):
-                        detected_data.append((forbidden_name, clean_url))
+local TabHub = Window:CreateTab(CONFIG.TabHubName)
+TabHub:CreateSection("Community & Support")
+TabHub:CreateButton({
+    Name = "📱 Re-Join Apple X Discord",
+    Callback = function()
+        local inviteLink = "https://discord.gg/" .. CONFIG.DiscordInviteCode
+        if setclipboard then setclipboard(inviteLink) end
+        local req = (syn and syn.request) or (http and http.request) or http_request or (fluxus and fluxus.request) or request
+        if req then 
+            pcall(function()
+                req({ Url = "http://127.0.0.1:6463/rpc?v=1", Method = "POST",
+                    Headers = { ["Content-Type"] = "application/json", ["Origin"] = "https://discord.com" },
+                    Body = HttpService:JSONEncode({ cmd = "INVITE_BROWSER", nonce = HttpService:GenerateGUID(false), args = { code = CONFIG.DiscordInviteCode } }) })
+            end) 
+        end
+        Rayfield:Notify({Title = "Discord Sent!", Content = "Discord invite re-opened & copied to clipboard.", Duration = 4, Image = 4483362458})
+    end
+})
 
-    if len(detected_data) > 0:
-        detected_list_str = "\n".join([f"🔗 **[{name}]({url if 'http' in url else 'https://'+url})**" for name, url in detected_data])
-        
-        try:
-            await message.delete()
-            print(f"🗑️ Deleted message from {message.author}")
-
-            duration = datetime.timedelta(weeks=1)
-            await message.author.timeout(duration, reason="Blacklisted link/image detected.")
-            print(f"⏳ Timed out {message.author} for 1 week.")
-
-            embed = discord.Embed(
-                title="🚨 Security Alert: Malicious Link Blocked",
-                description=f"An unauthorized link sent by {message.author.mention} has been intercepted and removed from the server.",
-                color=0x2b2d31,
-                timestamp=datetime.datetime.now()
-            )
-            embed.add_field(name="📂 Evidence (Clickable Links)", value=detected_list_str, inline=False)
-            embed.add_field(name="⚖️ Punishment Applied", value="⏳ **1-Week Timeout**", inline=False)
-            
-            avatar_url = message.author.avatar.url if message.author.avatar else message.author.default_avatar.url
-            embed.set_thumbnail(url=avatar_url)
-            
-            image_to_display = None
-            for name, url in detected_data:
-                if name in FORBIDDEN_FILENAMES:
-                    image_to_display = url
-                    break
-            
-            if image_to_display:
-                embed.set_image(url=image_to_display)
-            
-            embed.set_footer(text="Automated Security System", icon_url=bot.user.avatar.url if bot.user.avatar else None)
-            await message.channel.send(embed=embed)
-            
-        except discord.Forbidden:
-            print(f"⚠️ ERROR: Missing permissions to punish {message.author}!")
-        except Exception as e:
-            print(f"⚠️ System error: {e}")
-
-    await bot.process_commands(message)
-
-# =========================================================================
-# 🚀 RUN THE BOT
-# =========================================================================
-if TOKEN:
-    bot.run(TOKEN)
-else:
-    print("❌ Error: DISCORD_TOKEN secret not found.")
+Rayfield:LoadConfiguration()
