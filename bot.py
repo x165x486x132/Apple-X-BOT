@@ -120,4 +120,120 @@ async def on_member_join(member):
     await update_member_count(member.guild)
 
 @bot.event
-async def on_member_remove
+async def on_member_remove(member):
+    print(f"👤 {member.name} left.")
+    await update_member_count(member.guild)
+
+# =========================================================================
+# 🔑 PREMIUM SLASH COMMANDS (HWID SYSTEM)
+# =========================================================================
+@bot.tree.command(name="get_hwid", description="Get the Lua code to copy your HWID")
+async def get_hwid(interaction: discord.Interaction):
+    script = "```lua\nsetclipboard(game:GetService('RbxAnalyticsService'):GetClientId())\n```"
+    await interaction.response.send_message(
+        f"🛠 *How to get your HWID?*\nRun this line in your Roblox executor. Your HWID will be copied to your clipboard:\n{script}", 
+        ephemeral=True
+    )
+
+@bot.tree.command(name="whitelist", description="Whitelist your HWID for Apple X Premium access")
+@app_commands.describe(hwid="Your Roblox HWID (Run /get_hwid to copy it)")
+async def whitelist(interaction: discord.Interaction, hwid: str):
+    # Premium check
+    if not any(role.id == ROLE_PREMIUM_ID for role in interaction.user.roles):
+        await interaction.response.send_message("❌ **Access Denied.** This script is only for server boosters and premium users.", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True) 
+    
+    db, sha = get_github_db()
+    user_id_str = str(interaction.user.id)
+
+    # Save the HWID mapping to their Discord ID directly
+    db[user_id_str] = {
+        "hwid": hwid,
+        "username": str(interaction.user)
+    }
+
+    success = update_github_db(db, sha)
+    
+    if success:
+        script_to_copy = f'```lua\nloadstring(game:HttpGet("https://raw.githubusercontent.com/Tamachiru/AppleX/refs/heads/main/Game4"))()\n```'
+        await interaction.followup.send(f"✅ **You have been successfully whitelisted!**\n\nYour device is now registered. You can run the loader directly without any key requirements:\n{script_to_copy}\n\n*Note: Please wait 1 or 2 minutes for GitHub to register changes before running the script.*")
+    else:
+        await interaction.followup.send("❌ Error saving to GitHub. Please check if the `GH_API_TOKEN` secret is correctly configured.")
+
+# =========================================================================
+# 🛡️ ANTI-MALICIOUS LINK ENGINE
+# =========================================================================
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
+
+    detected_data = []
+    words = message.content.split()
+
+    for word in words:
+        word_lower = word.lower()
+        clean_url = word.strip("<>")
+        
+        for forbidden_link in FORBIDDEN_LINKS:
+            if forbidden_link.lower() in word_lower:
+                if not any(f == forbidden_link for f, u in detected_data):
+                    detected_data.append((forbidden_link, clean_url))
+
+        if "http://" in word_lower or "https://" in word_lower:
+            for forbidden_name in FORBIDDEN_FILENAMES:
+                if forbidden_name.lower() in clean_url.lower():
+                    if not any(f == forbidden_name for f, u in detected_data):
+                        detected_data.append((forbidden_name, clean_url))
+
+    if len(detected_data) > 0:
+        detected_list_str = "\n".join([f"🔗 **[{name}]({url if 'http' in url else 'https://'+url})**" for name, url in detected_data])
+        
+        try:
+            await message.delete()
+            print(f"🗑️ Deleted message from {message.author}")
+
+            duration = datetime.timedelta(weeks=1)
+            await message.author.timeout(duration, reason="Blacklisted link/image detected.")
+            print(f"⏳ Timed out {message.author} for 1 week.")
+
+            embed = discord.Embed(
+                title="🚨 Security Alert: Malicious Link Blocked",
+                description=f"An unauthorized link sent by {message.author.mention} has been intercepted and removed from the server.",
+                color=0x2b2d31,
+                timestamp=datetime.datetime.now()
+            )
+            embed.add_field(name="📂 Evidence (Clickable Links)", value=detected_list_str, inline=False)
+            embed.add_field(name="⚖️ Punishment Applied", value="⏳ **1-Week Timeout**", inline=False)
+            
+            avatar_url = message.author.avatar.url if message.author.avatar else message.author.default_avatar.url
+            embed.set_thumbnail(url=avatar_url)
+            
+            image_to_display = None
+            for name, url in detected_data:
+                if name in FORBIDDEN_FILENAMES:
+                    image_to_display = url
+                    break
+            
+            if image_to_display:
+                embed.set_image(url=image_to_display)
+            
+            embed.set_footer(text="Automated Security System", icon_url=bot.user.avatar.url if bot.user.avatar else None)
+            await message.channel.send(embed=embed)
+            
+        except discord.Forbidden:
+            print(f"⚠️ ERROR: Missing permissions to punish {message.author}!")
+        except Exception as e:
+            print(f"⚠️ System error: {e}")
+
+    await bot.process_commands(message)
+
+# =========================================================================
+# 🚀 RUN THE BOT
+# =========================================================================
+if TOKEN:
+    bot.run(TOKEN)
+else:
+    print("❌ Error: DISCORD_TOKEN secret not found.")
