@@ -7,6 +7,7 @@ import asyncio
 import requests
 import base64
 import json
+import uuid
 
 # =========================================================================
 # ⚙️ GLOBAL CONFIGURATION
@@ -16,9 +17,24 @@ GH_API_TOKEN = os.getenv("GH_API_TOKEN")
 STATS_CHANNEL_ID = os.getenv("CHANNEL_ID")
 
 # --- WHITELIST CONFIGURATION ---
-REPO_NAME = "x165x486x132/Apple-X-Key"    # 🟢 CORRIGÉ : Dépôt officiel public
+REPO_NAME = "x165x486x132/Apple-X-Key"    # Ton dépôt public officiel
 FILE_PATH = "hwid_db.json"               
-ROLE_PREMIUM_ID = 1498644209840951468    # Premium/Booster Role ID
+ROLE_PREMIUM_ID = 1498644209840951468    # 🟢 Rôle Booster/Premium mis à jour !
+
+# --- ANTI-MALICIOUS LINK CONFIGURATION ---
+FORBIDDEN_FILENAMES = [
+    "IMG_7625.jpg", "IMG_7625.jpeg",
+    "IMG_7632.jpg", "IMG_7632.jpeg",
+    "IMG_7620.jpg", "IMG_7620.jpeg",
+    "Untitled.jpg", "Untitled.jpeg",
+    "image.jpg", "image.jpeg"
+]
+
+FORBIDDEN_LINKS = [
+    "roblox-scam.com",    
+    "discord-nitro.gift", 
+    "steamspecial.com"    
+]
 
 # =========================================================================
 # 📂 GITHUB API UTILS
@@ -37,7 +53,7 @@ def update_github_db(json_data, sha):
     url = f"https://api.github.com/repos/{REPO_NAME}/contents/{FILE_PATH}"
     headers = {"Authorization": f"token {GH_API_TOKEN}"}
     content_b64 = base64.b64encode(json.dumps(json_data, indent=4).encode('utf-8')).decode('utf-8')
-    payload = {"message": "🤖 Update Whitelist Database (Modal Submission)", "content": content_b64}
+    payload = {"message": "🤖 Update HWID Database", "content": content_b64}
     if sha:
         payload["sha"] = sha
     r = requests.put(url, headers=headers, json=payload)
@@ -65,13 +81,11 @@ class WhitelistModal(ui.Modal, title="Apple X Premium Whitelist"):
         await interaction.response.defer(ephemeral=True)
         
         raw_hwid = self.hwid_input.value
-        # Standardize HWID to uppercase, removing braces and spaces
         cleaned_hwid = raw_hwid.strip().upper().replace("{", "").replace("}", "").replace(" ", "")
         
         db, sha = get_github_db()
         user_id_str = str(interaction.user.id)
         
-        # Save registration
         db[user_id_str] = {
             "hwid": cleaned_hwid,
             "username": str(interaction.user)
@@ -97,13 +111,11 @@ class WhitelistView(ui.View):
 
     @ui.button(label="🍏 Whitelist Device", style=discord.ButtonStyle.green, custom_id="whitelist_btn")
     async def whitelist_button(self, interaction: discord.Interaction, button: ui.Button):
-        # Premium Booster role check
         has_role = any(role.id == ROLE_PREMIUM_ID for role in interaction.user.roles)
         if not has_role:
             await interaction.response.send_message("❌ **Access Denied.** This whitelist panel is reserved for Server Boosters and Premium users.", ephemeral=True)
             return
         
-        # Open the modal
         await interaction.response.send_modal(WhitelistModal())
 
 class AppleXBot(commands.Bot):
@@ -118,7 +130,7 @@ class AppleXBot(commands.Bot):
 bot = AppleXBot()
 
 # =========================================================================
-# 🧹 AUTOMATED PREMIUM CLEANUP (Runs on startup / Every 6 hours)
+# 🧹 SCAN DE SECURITÉ AU DÉMARRAGE (Toutes les 6h via GitHub Actions)
 # =========================================================================
 async def cleanup_inactive_premium_users():
     await bot.wait_until_ready()
@@ -143,7 +155,6 @@ async def cleanup_inactive_premium_users():
             user_id = int(user_id_str)
             member = await guild.fetch_member(user_id)
             
-            # Check if the user still has the Premium role
             has_role = any(role.id == ROLE_PREMIUM_ID for role in member.roles)
             if not has_role:
                 print(f"❌ Removing {member.name} (Discord ID: {user_id_str}) - Missing Premium Role.")
@@ -196,7 +207,7 @@ async def github_timer():
     await bot.close()
 
 # =========================================================================
-# 🟢 EVENTS
+# 🟢 EVENTS & MONITORING (REAL-TIME WHITELIST REMOVAL)
 # =========================================================================
 @bot.event
 async def on_ready():
@@ -208,6 +219,109 @@ async def on_ready():
         
     bot.loop.create_task(github_timer())
     bot.loop.create_task(cleanup_inactive_premium_users())
+
+# 🔴 PROTECTION 1 : Si un membre perd le rôle Premium, il est retiré à la seconde !
+@bot.event
+async def on_member_update(before, after):
+    if before.roles != after.roles:
+        before_had_role = any(role.id == ROLE_PREMIUM_ID for role in before.roles)
+        after_has_role = any(role.id == ROLE_PREMIUM_ID for role in after.roles)
+        
+        if before_had_role and not after_has_role:
+            print(f"🧹 Member {after.name} lost the Premium role. Updating database...")
+            db, sha = get_github_db()
+            user_id_str = str(after.id)
+            if user_id_str in db:
+                del db[user_id_str]
+                success = update_github_db(db, sha)
+                if success:
+                    print(f"❌ Successfully removed {after.name} from whitelist database (Role Revoked).")
+                else:
+                    print(f"❌ Failed to update database after {after.name} lost their role.")
+
+# 🔴 PROTECTION 2 : Si un membre quitte le serveur, il est retiré à la seconde !
+@bot.event
+async def on_member_remove(member):
+    print(f"👤 {member.name} left the server.")
+    await update_member_count(member.guild)
+    
+    db, sha = get_github_db()
+    user_id_str = str(member.id)
+    if user_id_str in db:
+        del db[user_id_str]
+        success = update_github_db(db, sha)
+        if success:
+            print(f"❌ Successfully removed {member.name} from whitelist database (Left Server).")
+        else:
+            print(f"❌ Failed to update database after {member.name} left.")
+
+# =========================================================================
+# 🛡️ ANTI-MALICIOUS LINK ENGINE (ON MESSAGE)
+# =========================================================================
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
+
+    detected_data = []
+    words = message.content.split()
+
+    for word in words:
+        word_lower = word.lower()
+        clean_url = word.strip("<>")
+        
+        for forbidden_link in FORBIDDEN_LINKS:
+            if forbidden_link.lower() in word_lower:
+                if not any(f == forbidden_link for f, u in detected_data):
+                    detected_data.append((forbidden_link, clean_url))
+
+        if "http://" in word_lower or "https://" in word_lower:
+            for forbidden_name in FORBIDDEN_FILENAMES:
+                if forbidden_name.lower() in clean_url.lower():
+                    if not any(f == forbidden_name for f, u in detected_data):
+                        detected_data.append((forbidden_name, clean_url))
+
+    if len(detected_data) > 0:
+        detected_list_str = "\n".join([f"🔗 **[{name}]({url if 'http' in url else 'https://'+url})**" for name, url in detected_data])
+        
+        try:
+            await message.delete()
+            print(f"🗑️ Deleted message from {message.author}")
+
+            duration = datetime.timedelta(weeks=1)
+            await message.author.timeout(duration, reason="Blacklisted link/image detected.")
+            print(f"⏳ Timed out {message.author} for 1 week.")
+
+            embed = discord.Embed(
+                title="🚨 Security Alert: Malicious Link Blocked",
+                description=f"An unauthorized link sent by {message.author.mention} has been intercepted and removed from the server.",
+                color=0x2b2d31,
+                timestamp=datetime.datetime.now()
+            )
+            embed.add_field(name="📂 Evidence (Clickable Links)", value=detected_list_str, inline=False)
+            embed.add_field(name="⚖️ Punishment Applied", value="⏳ **1-Week Timeout**", inline=False)
+            
+            avatar_url = message.author.avatar.url if message.author.avatar else message.author.default_avatar.url
+            embed.set_thumbnail(url=avatar_url)
+            
+            image_to_display = None
+            for name, url in detected_data:
+                if name in FORBIDDEN_FILENAMES:
+                    image_to_display = url
+                    break
+            
+            if image_to_display:
+                embed.set_image(url=image_to_display)
+            
+            embed.set_footer(text="Automated Security System", icon_url=bot.user.avatar.url if bot.user.avatar else None)
+            await message.channel.send(embed=embed)
+            
+        except discord.Forbidden:
+            print(f"⚠️ ERROR: Missing permissions to punish {message.author}!")
+        except Exception as e:
+            print(f"⚠️ System error: {e}")
+
+    await bot.process_commands(message)
 
 # =========================================================================
 # 🛠️ ADMIN COMMAND: SETUP THE WHITELIST PANEL
