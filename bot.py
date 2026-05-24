@@ -149,8 +149,8 @@ async def generate_key(interaction: discord.Interaction, hwid: str):
     db, sha = get_github_db()
     user_id_str = str(interaction.user.id)
 
-    # Clean the input HWID
-    cleaned_hwid = hwid.strip().lower().replace("{", "").replace("}", "").replace(" ", "")
+    # 🟢 Clean the input HWID and enforce UPPERCASE!
+    cleaned_hwid = hwid.strip().upper().replace("{", "").replace("}", "").replace(" ", "")
 
     if user_id_str in db:
         user_key = db[user_id_str]["key"]
