@@ -7,6 +7,7 @@ import asyncio
 import requests
 import base64
 import json
+import uuid
 
 # =========================================================================
 # ⚙️ GLOBAL CONFIGURATION
@@ -15,7 +16,7 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 GH_API_TOKEN = os.getenv("GH_API_TOKEN") 
 STATS_CHANNEL_ID = os.getenv("CHANNEL_ID")
 
-# --- WHITELIST CONFIGURATION ---
+# --- HWID CONFIGURATION ---
 REPO_NAME = "x165x486x132/Apple-X-Key"    # Your public database repository
 FILE_PATH = "hwid_db.json"               
 ROLE_PREMIUM_ID = 1498644209840951468    # Premium/Booster Role ID
@@ -36,22 +37,6 @@ FORBIDDEN_LINKS = [
 ]
 
 # =========================================================================
-# 🔍 ROBLOX API: CONVERT USERNAME TO USERID
-# =========================================================================
-def get_roblox_userid(username):
-    url = "https://users.roblox.com/v1/usernames/users"
-    payload = {"usernames": [username], "excludeBannedUsers": False}
-    try:
-        r = requests.post(url, json=payload, timeout=5)
-        if r.status_code == 200:
-            data = r.json()
-            if data["data"]:
-                return data["data"][0]["id"], data["data"][0]["name"]
-    except Exception as e:
-        print(f"⚠️ Roblox API Error: {e}")
-    return None, None
-
-# =========================================================================
 # 📂 GITHUB API UTILS
 # =========================================================================
 def get_github_db():
@@ -68,7 +53,7 @@ def update_github_db(json_data, sha):
     url = f"https://api.github.com/repos/{REPO_NAME}/contents/{FILE_PATH}"
     headers = {"Authorization": f"token {GH_API_TOKEN}"}
     content_b64 = base64.b64encode(json.dumps(json_data, indent=4).encode('utf-8')).decode('utf-8')
-    payload = {"message": "🤖 Update Whitelist Database (UserID)", "content": content_b64}
+    payload = {"message": "🤖 Update HWID Database", "content": content_b64}
     if sha:
         payload["sha"] = sha
     r = requests.put(url, headers=headers, json=payload)
@@ -141,39 +126,44 @@ async def on_member_remove(member):
     await update_member_count(member.guild)
 
 # =========================================================================
-# 🔑 PREMIUM SLASH COMMANDS (ROBLOX USERID WHITELIST)
+# 🔑 PREMIUM SLASH COMMANDS (HWID KEY SYSTEM)
 # =========================================================================
-@bot.tree.command(name="whitelist", description="Whitelist your Roblox account for Apple X Premium access")
-@app_commands.describe(roblox_username="Your exact Roblox Username")
-async def whitelist(interaction: discord.Interaction, roblox_username: str):
+@bot.tree.command(name="get_hwid", description="Get the Lua code to copy your HWID")
+async def get_hwid(interaction: discord.Interaction):
+    script = "```lua\nsetclipboard(game:GetService('RbxAnalyticsService'):GetClientId())\n```"
+    await interaction.response.send_message(
+        f"🛠 *How to get your HWID?*\nRun this line in your Roblox executor. Your HWID will be copied to your clipboard:\n{script}", 
+        ephemeral=True
+    )
+
+@bot.tree.command(name="key", description="Generate your lifetime Premium Key using your HWID")
+@app_commands.describe(hwid="Your Roblox HWID (Run /get_hwid to copy it)")
+async def generate_key(interaction: discord.Interaction, hwid: str):
     # Premium check
     if not any(role.id == ROLE_PREMIUM_ID for role in interaction.user.roles):
         await interaction.response.send_message("❌ **Access Denied.** This command is reserved for Server Boosters / Premium users.", ephemeral=True)
         return
 
     await interaction.response.defer(ephemeral=True) 
-
-    # Query the Roblox API to convert Username to numeric UserID
-    roblox_id, real_username = get_roblox_userid(roblox_username)
-    if not roblox_id:
-        await interaction.followup.send(f"❌ **Roblox account '{roblox_username}' not found.** Check the spelling and try again.")
-        return
     
     db, sha = get_github_db()
     user_id_str = str(interaction.user.id)
 
-    # Save the secure numerical Roblox UserID
-    db[user_id_str] = {
-        "userid": roblox_id,
-        "username": real_username,
-        "discord_username": str(interaction.user)
-    }
+    # Clean the input HWID
+    cleaned_hwid = hwid.strip().lower().replace("{", "").replace("}", "").replace(" ", "")
+
+    if user_id_str in db:
+        user_key = db[user_id_str]["key"]
+        db[user_id_str]["hwid"] = cleaned_hwid 
+    else:
+        user_key = f"APPLEX-{uuid.uuid4().hex[:8].upper()}"
+        db[user_id_str] = {"key": user_key, "hwid": cleaned_hwid}
 
     success = update_github_db(db, sha)
     
     if success:
         script_to_copy = f'```lua\nloadstring(game:HttpGet("https://raw.githubusercontent.com/Tamachiru/AppleX/refs/heads/main/Game4"))()\n```'
-        await interaction.followup.send(f"✅ **Roblox account successfully whitelisted!**\n\n- **Username:** {real_username}\n- **Roblox UserID:** `{roblox_id}`\n\nYou can now run the loader directly, bypassing key screens:\n{script_to_copy}\n\n*Note: Please wait 1 or 2 minutes for GitHub to register changes before running the script.*")
+        await interaction.followup.send(f"✅ **Database successfully updated.**\n\nYour premium key is: `{user_key}`\n\nHere is your loader. Your device is now registered:\n{script_to_copy}\n\n*Note: Please wait 1 or 2 minutes for GitHub to register changes before running the script.*")
     else:
         await interaction.followup.send("❌ Error saving to GitHub. Please check if the `GH_API_TOKEN` secret is correctly configured.")
 
