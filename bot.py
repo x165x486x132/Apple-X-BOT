@@ -16,9 +16,9 @@ GH_API_TOKEN = os.getenv("GH_API_TOKEN")
 STATS_CHANNEL_ID = os.getenv("CHANNEL_ID")
 
 # --- WHITELIST CONFIGURATION ---
-REPO_NAME = "x165x486x132/Apple-X-Key"   # 🟢 CORRIGÉ: Ton vrai dépôt
+REPO_NAME = "x165x486x132/Apple-X-Key"    # 🟢 CORRIGÉ : Dépôt officiel public
 FILE_PATH = "hwid_db.json"               
-ROLE_PREMIUM_ID = 1498644209840951468    # ID du rôle Premium
+ROLE_PREMIUM_ID = 1498644256712163358    # Premium/Booster Role ID
 
 # =========================================================================
 # 📂 GITHUB API UTILS
@@ -79,7 +79,6 @@ class WhitelistModal(ui.Modal, title="Apple X Premium Whitelist"):
         
         success = update_github_db(db, sha)
         if success:
-            # 🟢 CORRIGÉ: Le bon lien loadstring avec x165x486x132
             loader = '```lua\nloadstring(game:HttpGet("https://raw.githubusercontent.com/x165x486x132/AppleX/refs/heads/main/Game4"))()\n```'
             embed = discord.Embed(
                 title="🍏 Device Whitelisted successfully!",
