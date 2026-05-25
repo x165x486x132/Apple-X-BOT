@@ -19,8 +19,9 @@ STATS_CHANNEL_ID = os.getenv("CHANNEL_ID")
 # --- WHITELIST CONFIGURATION ---
 REPO_NAME = "x165x486x132/Apple-X-Key"    
 FILE_PATH = "hwid_db.json"               
-ROLE_PREMIUM_ID = 1498644209840951468    
-ROLE_BOOSTER_ID = 1055452140522446889    
+ROLE_PREMIUM_ID = 1498644209840951468    # Premium/Booster Role ID
+ROLE_BOOSTER_ID = 1055452140522446889    # Second Booster Role ID
+PREMIUM_GAMEPASS_ID = 1817589078         # Roblox GamePass ID for Premium access
 
 # --- ANTI-MALICIOUS LINK CONFIGURATION ---
 FORBIDDEN_FILENAMES = [
@@ -36,6 +37,39 @@ FORBIDDEN_LINKS = [
     "discord-nitro.gift", 
     "steamspecial.com"    
 ]
+
+# =========================================================================
+# 🔍 ROBLOX API: CONVERT USERNAME & CHECK GAMEPASS OWNERSHIP
+# =========================================================================
+def get_roblox_userid(username):
+    url = "https://users.roblox.com/v1/usernames/users"
+    payload = {"usernames": [username], "excludeBannedUsers": False}
+    try:
+        r = requests.post(url, json=payload, timeout=5)
+        if r.status_code == 200:
+            data = r.json()
+            if data["data"]:
+                return data["data"][0]["id"], data["data"][0]["name"]
+    except Exception as e:
+        print(f"⚠️ Roblox API Error: {e}")
+    return None, None
+
+def check_gamepass_ownership(userid, gamepassid):
+    url = f"https://inventory.roblox.com/v1/users/{userid}/items/GamePass/{gamepassid}"
+    try:
+        r = requests.get(url, timeout=5)
+        if r.status_code == 200:
+            data = r.json()
+            # If the user owns the gamepass, the data array will have 1 item
+            if data and data.get("data") and len(data["data"]) > 0:
+                return "owned"
+            else:
+                return "not_owned"
+        elif r.status_code == 403:
+            return "private"
+    except Exception as e:
+        print(f"⚠️ Roblox Inventory API Error: {e}")
+    return "error"
 
 # =========================================================================
 # 📂 GITHUB API UTILS
@@ -67,12 +101,24 @@ intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True 
 
-# --- DISCORD UI: WHITELIST MODAL ---
+# --- DISCORD UI: WHITELIST & CLAIM MODAL ---
 class WhitelistModal(ui.Modal):
     def __init__(self, role_type: str):
-        super().__init__(title=f"Apple X {role_type} Whitelist")
+        super().__init__(title=f"Apple X {role_type} Purchase")
         self.role_type = role_type
         
+        # 1. Roblox Username input field
+        self.username_input = ui.TextInput(
+            label="Roblox Username",
+            placeholder="Enter your exact Roblox Username...",
+            style=discord.TextStyle.short,
+            min_length=3,
+            max_length=20,
+            required=True
+        )
+        self.add_item(self.username_input)
+        
+        # 2. Roblox HWID input field
         self.hwid_input = ui.TextInput(
             label="Roblox HWID",
             placeholder="Paste your Roblox ClientId/HWID here...",
@@ -86,24 +132,62 @@ class WhitelistModal(ui.Modal):
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         
+        username = self.username_input.value.strip()
         raw_hwid = self.hwid_input.value
         cleaned_hwid = raw_hwid.strip().upper().replace("{", "").replace("}", "").replace(" ", "")
         
+        # Convert Roblox Username to Roblox UserID
+        roblox_id, real_username = get_roblox_userid(username)
+        if not roblox_id:
+            await interaction.followup.send(f"❌ **Roblox account '{username}' not found.** Check the spelling and try again.", ephemeral=True)
+            return
+
+        # Check GamePass Ownership
+        ownership_status = check_gamepass_ownership(roblox_id, PREMIUM_GAMEPASS_ID)
+        
+        if ownership_status == "not_owned":
+            await interaction.followup.send(f"❌ **Access Denied.** You do not own the required GamePass on Roblox. Please purchase it first!", ephemeral=True)
+            return
+        elif ownership_status == "private":
+            await interaction.followup.send(
+                "🔒 **Your Roblox inventory is private!**\n\n"
+                "To verify your purchase, the bot must see your inventory:\n"
+                "1. Go to **Roblox Settings -> Privacy**.\n"
+                "2. Set **'Who can see my inventory?'** to **'Everyone'**.\n"
+                "3. Try whitelisting again.\n"
+                "*(You can set it back to private after verification).* ", 
+                ephemeral=True
+            )
+            return
+        elif ownership_status == "error":
+            await interaction.followup.send("❌ Roblox API error. Please try again in a few minutes.", ephemeral=True)
+            return
+
+        # Assign Discord role automatically
+        guild = interaction.guild
+        member = await guild.fetch_member(interaction.user.id)
+        
+        role = guild.get_role(ROLE_PREMIUM_ID)
+        if role and role not in member.roles:
+            await member.add_roles(role)
+            print(f"🎁 Automatically granted Premium role to {member.name} via verification.")
+
+        # Save to GitHub Database
         db, sha = get_github_db()
         user_id_str = str(interaction.user.id)
-        
         db[user_id_str] = {
             "hwid": cleaned_hwid,
-            "username": str(interaction.user),
+            "username": real_username,
             "role": self.role_type 
         }
         
         success = update_github_db(db, sha)
         if success:
-            loader = '```lua\nloadstring(game:HttpGet("https://raw.githubusercontent.com/x165x486x132/AppleX/refs/heads/main/Game4"))()\n```'
+            # 🟢 Updated to Game5
+            loader = '```lua\nloadstring(game:HttpGet("https://raw.githubusercontent.com/x165x486x132/AppleX/refs/heads/main/Game5"))()\n```'
             embed = discord.Embed(
-                title=f"🍏 Whitelisted successfully as {self.role_type}!",
-                description=f"Welcome to Apple X, {interaction.user.mention}!\n\n**Registered HWID:** `{cleaned_hwid}`\n\nYou can now execute the loader script directly in Roblox without any keys:",
+                title=f"🍏 Purchase Registered successfully as {self.role_type}!",
+                description=f"Thank you for your support, {interaction.user.mention}!\n\n**Registered HWID:** `{cleaned_hwid}`\n\nYou can now execute the loader script directly in Roblox to claim your items:",
                 color=0x57F287
             )
             embed.add_field(name="📜 Loader Script", value=loader, inline=False)
@@ -111,7 +195,7 @@ class WhitelistModal(ui.Modal):
         else:
             await interaction.followup.send("❌ Error saving to GitHub database. Please check if `GH_API_TOKEN` is configured correctly.", ephemeral=True)
 
-# --- DISCORD UI: PANEL BUTTON VIEW ---
+# --- DISCORD UI: PANEL BUTTON VIEW (WHITELIST) ---
 class WhitelistView(ui.View):
     def __init__(self):
         super().__init__(timeout=None) 
@@ -121,13 +205,20 @@ class WhitelistView(ui.View):
         has_premium = any(role.id == ROLE_PREMIUM_ID for role in interaction.user.roles)
         has_booster = any(role.id == ROLE_BOOSTER_ID for role in interaction.user.roles)
         
-        if not has_premium and not has_booster:
-            await interaction.response.send_message("❌ **Access Denied.** This whitelist panel is reserved for Server Boosters and Premium users.", ephemeral=True)
-            return
-        
-        role_type = "Premium" if has_premium else "Booster"
-        
+        # Even if they don't have the role yet, clicking this allows them to Whitelist & Claim via GamePass!
+        role_type = "Premium" if has_premium or not has_booster else "Booster"
         await interaction.response.send_modal(WhitelistModal(role_type))
+
+# --- 🟢 DISCORD UI: LINK BUTTON VIEW (PURCHASE INFO) ---
+class BuyView(ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+        # Adds a persistent Link Button pointing to your Roblox GamePass
+        self.add_item(ui.Button(
+            label="🛒 Buy Premium GamePass (15 Robux)",
+            style=discord.ButtonStyle.link,
+            url=f"https://www.roblox.com/game-pass/{PREMIUM_GAMEPASS_ID}/Premium"
+        ))
 
 class AppleXBot(commands.Bot):
     def __init__(self):
@@ -135,6 +226,7 @@ class AppleXBot(commands.Bot):
 
     async def setup_hook(self):
         self.add_view(WhitelistView())
+        self.add_view(BuyView()) # Register the link button view
         await self.tree.sync()
         print("✅ Slash commands and UI views successfully synchronized.")
 
@@ -359,18 +451,15 @@ async def list_members(interaction: discord.Interaction):
 
     await interaction.response.defer(ephemeral=True)
 
-    # Fetch the list of members
     members = guild.members
     total_members = len(members)
 
-    # Format the first 30 members with clickable mentions
     member_list = []
     for i, member in enumerate(members[:30]):
         member_list.append(f"{i+1}. {member.mention} (`{member.name}`)")
 
     member_list_str = "\n".join(member_list) if member_list else "No members found."
     
-    # Add a suffix if there are more than 30 members to avoid exceeding Discord character limit
     if total_members > 30:
         member_list_str += f"\n\n*... and {total_members - 30} more members.*"
 
@@ -387,7 +476,7 @@ async def list_members(interaction: discord.Interaction):
     await interaction.followup.send(embed=embed, ephemeral=True)
 
 # =========================================================================
-# 🛠️ ADMIN COMMAND: SETUP THE WHITELIST PANEL (ANONYMOUS VERSION)
+# 🛠️ ADMIN COMMAND: SETUP THE WHITELIST PANEL (ANONYMOUS & REBRANDED)
 # =========================================================================
 @bot.tree.command(name="setup_panel", description="Send the Premium Whitelist Panel to the current channel (Admin only)")
 @app_commands.checks.has_permissions(administrator=True)
@@ -411,5 +500,57 @@ async def setup_panel(interaction: discord.Interaction):
     embed.set_footer(text="Apple X Security System", icon_url=bot.user.avatar.url if bot.user.avatar else None)
     
     await interaction.channel.send(embed=embed, view=WhitelistView())
+
+# =========================================================================
+# 🛒 🟢 NEW ADMIN COMMAND: SETUP THE BUY INFO PANEL (ANONYMOUS)
+# =========================================================================
+@bot.tree.command(name="setup_buy_panel", description="Send the Premium Information & Purchase Panel (Admin only)")
+@app_commands.checks.has_permissions(administrator=True)
+async def setup_buy_panel(interaction: discord.Interaction):
+    # Répond de manière éphémère pour confirmer à l'admin
+    await interaction.response.send_message("✅ Premium info panel successfully sent anonymously!", ephemeral=True)
+    
+    embed = discord.Embed(
+        title="🍏 How to Get Apple X Premium Access",
+        description=(
+            "Want to unlock lifetime premium bypasses and elite scripts in Highway Legends? "
+            "Choose one of the methods below to gain instant access!\n\n"
+            "---"
+        ),
+        color=0x9F33FF # Couleur violette élégante pour Booster/Premium
+    )
+    
+    embed.add_field(
+        name="🚀 Option 1: Boost This Discord Server",
+        value=(
+            "Boost this Discord server **twice** to instantly unlock the **Booster** role! "
+            "You will receive automatic lifetime keyless access to our script."
+        ),
+        inline=False
+    )
+    
+    embed.add_field(
+        name="🛒 Option 2: Buy Roblox GamePass (15 Robux Only!)",
+        value=(
+            "Purchase the official **Apple X Premium GamePass** on Roblox for only **15 Robux**! "
+            "Click the button below to purchase it directly on Roblox."
+        ),
+        inline=False
+    )
+    
+    embed.add_field(
+        name="📩 How to Claim Your Premium Status?",
+        value=(
+            "• **If you Boosted :** Click the button on our Whitelist Panel to register your device instantly!\n"
+            "• **If you bought the GamePass :** DM the Owner / Admin directly with proof of purchase to get your Premium role, or use the Whitelist Panel button to register yourself!\n\n"
+            "⚠️ *Always make sure your Roblox Inventory is set to 'Everyone' in your Privacy Settings before whitelisting!*"
+        ),
+        inline=False
+    )
+    
+    embed.set_footer(text="Apple X Security System", icon_url=bot.user.avatar.url if bot.user.avatar else None)
+    
+    # Envoie le panneau de manière anonyme dans le salon
+    await interaction.channel.send(embed=embed, view=BuyView())
 
 bot.run(TOKEN)
