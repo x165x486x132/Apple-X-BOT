@@ -19,7 +19,8 @@ STATS_CHANNEL_ID = os.getenv("CHANNEL_ID")
 # --- WHITELIST CONFIGURATION ---
 REPO_NAME = "x165x486x132/Apple-X-Key"
 FILE_PATH = "hwid_db.json"               
-ROLE_PREMIUM_ID = 1498644209840951468
+ROLE_PREMIUM_ID = 1498644256712163358
+ROLE_BOOSTER_ID = 1055452140522446889
 
 # --- ANTI-MALICIOUS LINK CONFIGURATION ---
 FORBIDDEN_FILENAMES = [
@@ -53,29 +54,30 @@ def update_github_db(json_data, sha):
     url = f"https://api.github.com/repos/{REPO_NAME}/contents/{FILE_PATH}"
     headers = {"Authorization": f"token {GH_API_TOKEN}"}
     content_b64 = base64.b64encode(json.dumps(json_data, indent=4).encode('utf-8')).decode('utf-8')
-    payload = {"message": "🤖 Update HWID Database", "content": content_b64}
+    payload = {"message": "🤖 Update Whitelist Database", "content": content_b64}
     if sha:
         payload["sha"] = sha
     r = requests.put(url, headers=headers, json=payload)
     return r.status_code in [200, 201]
 
-# =========================================================================
-# 🤖 BOT INITIALIZATION
-# =========================================================================
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True 
 
-# --- DISCORD UI: WHITELIST MODAL ---
-class WhitelistModal(ui.Modal, title="Apple X Premium Whitelist"):
-    hwid_input = ui.TextInput(
-        label="Roblox HWID",
-        placeholder="Paste your Roblox ClientId/HWID here...",
-        style=discord.TextStyle.short,
-        min_length=15,
-        max_length=100,
-        required=True
-    )
+class WhitelistModal(ui.Modal):
+    def __init__(self, role_type: str):
+        super().__init__(title=f"Apple X {role_type} Whitelist")
+        self.role_type = role_type
+        
+        self.hwid_input = ui.TextInput(
+            label="Roblox HWID",
+            placeholder="Paste your Roblox ClientId/HWID here...",
+            style=discord.TextStyle.short,
+            min_length=15,
+            max_length=100,
+            required=True
+        )
+        self.add_item(self.hwid_input)
 
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
@@ -88,15 +90,16 @@ class WhitelistModal(ui.Modal, title="Apple X Premium Whitelist"):
         
         db[user_id_str] = {
             "hwid": cleaned_hwid,
-            "username": str(interaction.user)
+            "username": str(interaction.user),
+            "role": self.role_type
         }
         
         success = update_github_db(db, sha)
         if success:
             loader = '```lua\nloadstring(game:HttpGet("https://raw.githubusercontent.com/x165x486x132/AppleX/refs/heads/main/Game4"))()\n```'
             embed = discord.Embed(
-                title="🍏 Device Whitelisted successfully!",
-                description=f"Welcome to Apple X Premium, {interaction.user.mention}!\n\n**Registered HWID:** `{cleaned_hwid}`\n\nYou can now execute the loader script directly in Roblox without any keys:",
+                title=f"🍏 Whitelisted successfully as {self.role_type}!",
+                description=f"Welcome to Apple X, {interaction.user.mention}!\n\n**Registered HWID:** `{cleaned_hwid}`\n\nYou can now execute the loader script directly in Roblox without any keys:",
                 color=0x57F287
             )
             embed.add_field(name="📜 Loader Script", value=loader, inline=False)
@@ -111,13 +114,16 @@ class WhitelistView(ui.View):
 
     @ui.button(label="🍏 Whitelist Device", style=discord.ButtonStyle.green, custom_id="whitelist_btn")
     async def whitelist_button(self, interaction: discord.Interaction, button: ui.Button):
-        # Premium Booster role check
-        has_role = any(role.id == ROLE_PREMIUM_ID for role in interaction.user.roles)
-        if not has_role:
+        has_premium = any(role.id == ROLE_PREMIUM_ID for role in interaction.user.roles)
+        has_booster = any(role.id == ROLE_BOOSTER_ID for role in interaction.user.roles)
+        
+        if not has_premium and not has_booster:
             await interaction.response.send_message("❌ **Access Denied.** This whitelist panel is reserved for Server Boosters and Premium users.", ephemeral=True)
             return
         
-        await interaction.response.send_modal(WhitelistModal())
+        role_type = "Premium" if has_premium else "Booster"
+        
+        await interaction.response.send_modal(WhitelistModal(role_type))
 
 class AppleXBot(commands.Bot):
     def __init__(self):
@@ -153,10 +159,17 @@ async def cleanup_inactive_premium_users():
             user_id = int(user_id_str)
             member = await guild.fetch_member(user_id)
             
-            has_role = any(role.id == ROLE_PREMIUM_ID for role in member.roles)
-            if not has_role:
-                print(f"❌ Removing {member.name} (Discord ID: {user_id_str}) - Missing Premium Role.")
+            has_premium = any(role.id == ROLE_PREMIUM_ID for role in member.roles)
+            has_booster = any(role.id == ROLE_BOOSTER_ID for role in member.roles)
+            
+            if not has_premium and not has_booster:
+                print(f"❌ Removing {member.name} (Discord ID: {user_id_str}) - Missing Access Roles.")
                 users_to_remove.append(user_id_str)
+            else:
+                current_role = "Premium" if has_premium else "Booster"
+                if db[user_id_str].get("role") != current_role:
+                    db[user_id_str]["role"] = current_role
+                    changed = True
                 
         except discord.NotFound:
             print(f"❌ Removing Discord ID {user_id_str} - User left the server.")
@@ -178,9 +191,6 @@ async def cleanup_inactive_premium_users():
     else:
         print("✨ Whitelist is already clean.")
 
-# =========================================================================
-# 📊 STATISTICS & LIFETIME TIMER
-# =========================================================================
 async def update_member_count(guild):
     if not STATS_CHANNEL_ID:
         return
@@ -204,9 +214,6 @@ async def github_timer():
     print("⏳ 6h limit approaching. Voluntary graceful shutdown.")
     await bot.close()
 
-# =========================================================================
-# 🟢 EVENTS & MONITORING (REAL-TIME WHITELIST REMOVAL)
-# =========================================================================
 @bot.event
 async def on_ready():
     print(f'✅ Bot is online! Logged in as {bot.user}')
@@ -221,20 +228,29 @@ async def on_ready():
 @bot.event
 async def on_member_update(before, after):
     if before.roles != after.roles:
-        before_had_role = any(role.id == ROLE_PREMIUM_ID for role in before.roles)
-        after_has_role = any(role.id == ROLE_PREMIUM_ID for role in after.roles)
+        before_had_access = any(role.id in [ROLE_PREMIUM_ID, ROLE_BOOSTER_ID] for role in before.roles)
+        after_has_access = any(role.id in [ROLE_PREMIUM_ID, ROLE_BOOSTER_ID] for role in after.roles)
         
-        if before_had_role and not after_has_role:
-            print(f"🧹 Member {after.name} lost the Premium role. Updating database...")
+        if before_had_access and not after_has_access:
+            print(f"🧹 Member {after.name} lost all access roles. Updating database...")
             db, sha = get_github_db()
             user_id_str = str(after.id)
             if user_id_str in db:
                 del db[user_id_str]
                 success = update_github_db(db, sha)
                 if success:
-                    print(f"❌ Successfully removed {after.name} from whitelist database (Role Revoked).")
-                else:
-                    print(f"❌ Failed to update database after {after.name} lost their role.")
+                    print(f"❌ Successfully removed {after.name} from whitelist database.")
+        
+        elif after_has_access:
+            after_premium = any(role.id == ROLE_PREMIUM_ID for role in after.roles)
+            current_role = "Premium" if after_premium else "Booster"
+            
+            db, sha = get_github_db()
+            user_id_str = str(after.id)
+            if user_id_str in db and db[user_id_str].get("role") != current_role:
+                db[user_id_str]["role"] = current_role
+                update_github_db(db, sha)
+                print(f"🔄 Updated {after.name}'s role status to {current_role}.")
 
 @bot.event
 async def on_member_remove(member):
@@ -247,13 +263,8 @@ async def on_member_remove(member):
         del db[user_id_str]
         success = update_github_db(db, sha)
         if success:
-            print(f"❌ Successfully removed {member.name} from whitelist database (Left Server).")
-        else:
-            print(f"❌ Failed to update database after {member.name} left.")
+            print(f"❌ Successfully removed {member.name} from whitelist (Left Server).")
 
-# =========================================================================
-# 🛡️ ANTI-MALICIOUS LINK ENGINE (ON MESSAGE)
-# =========================================================================
 @bot.event
 async def on_message(message):
     if message.author.bot:
@@ -319,16 +330,11 @@ async def on_message(message):
 
     await bot.process_commands(message)
 
-# =========================================================================
-# 🛠️ ADMIN COMMAND: SETUP THE WHITELIST PANEL (ANONYMOUS VERSION)
-# =========================================================================
-@bot.tree.command(name="panel", description="Send the Premium Whitelist Panel to the current channel (Admin only)")
+@bot.tree.command(name="setup_panel", description="Send the Premium Whitelist Panel to the current channel (Admin only)")
 @app_commands.checks.has_permissions(administrator=True)
 async def setup_panel(interaction: discord.Interaction):
-    # 🟢 1. On répond de manière éphémère à l'admin (Lui seul voit ce message de confirmation)
     await interaction.response.send_message("✅ Whitelist panel successfully sent anonymously!", ephemeral=True)
     
-    # 🟢 2. On envoie l'embed classique directement au salon (Pas de mention "L'utilisateur a utilisé /setup_panel")
     embed = discord.Embed(
         title="🍏 Apple X — Premium Whitelist Panel",
         description=(
@@ -345,7 +351,6 @@ async def setup_panel(interaction: discord.Interaction):
     )
     embed.set_footer(text="Apple X Security System", icon_url=bot.user.avatar.url if bot.user.avatar else None)
     
-    # Send directly to the channel
     await interaction.channel.send(embed=embed, view=WhitelistView())
 
 bot.run(TOKEN)
