@@ -424,7 +424,7 @@ async def setup_panel(interaction: discord.Interaction):
     await interaction.channel.send(embed=embed, view=WhitelistView())
 
 # =========================================================================
-# ⚠️ 🟢 NEW ADMIN COMMAND: SETUP THE LEGAL DISCLAIMER PANEL (ANONYMOUS)
+# ⚠️ 🟢 NEW ADMIN COMMAND: SETUP THE LEGAL DISCLAIMER PANEL (ANONYMOUS & AUTOREACT)
 # =========================================================================
 @bot.tree.command(name="setup_disclaimer", description="Send the Legal Disclaimer & Terms of Service (Admin only)")
 @app_commands.checks.has_permissions(administrator=True)
@@ -496,7 +496,13 @@ async def setup_disclaimer(interaction: discord.Interaction):
     embed2.set_footer(text="Apple X Security System", icon_url=bot.user.avatar.url if bot.user.avatar else None)
     
     # Envoie la série d'embeds de manière anonyme dans le salon
-    await interaction.channel.send(embeds=[embed1, embed2])
+    message = await interaction.channel.send(embeds=[embed1, embed2])
+    
+    # 🟢 AJOUT : Le bot réagit automatiquement avec la coche verte ✅ sous le message !
+    try:
+        await message.add_reaction("✅")
+    except Exception as e:
+        print(f"⚠️ Failed to add reaction: {e}")
 
 # =========================================================================
 # 🛒 NEW ADMIN COMMAND: SETUP THE BUY INFO PANEL (ANONYMOUS)
