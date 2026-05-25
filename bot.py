@@ -17,9 +17,9 @@ GH_API_TOKEN = os.getenv("GH_API_TOKEN")
 STATS_CHANNEL_ID = os.getenv("CHANNEL_ID")
 
 # --- WHITELIST CONFIGURATION ---
-REPO_NAME = "x165x486x132/Apple-X-Key"    # Ton dépôt public officiel
+REPO_NAME = "x165x486x132/Apple-X-Key"
 FILE_PATH = "hwid_db.json"               
-ROLE_PREMIUM_ID = 1498644209840951468    # 🟢 Rôle Booster/Premium mis à jour !
+ROLE_PREMIUM_ID = 1498644209840951468
 
 # --- ANTI-MALICIOUS LINK CONFIGURATION ---
 FORBIDDEN_FILENAMES = [
@@ -111,6 +111,7 @@ class WhitelistView(ui.View):
 
     @ui.button(label="🍏 Whitelist Device", style=discord.ButtonStyle.green, custom_id="whitelist_btn")
     async def whitelist_button(self, interaction: discord.Interaction, button: ui.Button):
+        # Premium Booster role check
         has_role = any(role.id == ROLE_PREMIUM_ID for role in interaction.user.roles)
         if not has_role:
             await interaction.response.send_message("❌ **Access Denied.** This whitelist panel is reserved for Server Boosters and Premium users.", ephemeral=True)
@@ -129,9 +130,6 @@ class AppleXBot(commands.Bot):
 
 bot = AppleXBot()
 
-# =========================================================================
-# 🧹 SCAN DE SECURITÉ AU DÉMARRAGE (Toutes les 6h via GitHub Actions)
-# =========================================================================
 async def cleanup_inactive_premium_users():
     await bot.wait_until_ready()
     await asyncio.sleep(10)
@@ -220,7 +218,6 @@ async def on_ready():
     bot.loop.create_task(github_timer())
     bot.loop.create_task(cleanup_inactive_premium_users())
 
-# 🔴 PROTECTION 1 : Si un membre perd le rôle Premium, il est retiré à la seconde !
 @bot.event
 async def on_member_update(before, after):
     if before.roles != after.roles:
@@ -239,7 +236,6 @@ async def on_member_update(before, after):
                 else:
                     print(f"❌ Failed to update database after {after.name} lost their role.")
 
-# 🔴 PROTECTION 2 : Si un membre quitte le serveur, il est retiré à la seconde !
 @bot.event
 async def on_member_remove(member):
     print(f"👤 {member.name} left the server.")
@@ -324,11 +320,15 @@ async def on_message(message):
     await bot.process_commands(message)
 
 # =========================================================================
-# 🛠️ ADMIN COMMAND: SETUP THE WHITELIST PANEL
+# 🛠️ ADMIN COMMAND: SETUP THE WHITELIST PANEL (ANONYMOUS VERSION)
 # =========================================================================
-@bot.tree.command(name="setup_panel", description="Send the Premium Whitelist Panel to the current channel (Admin only)")
+@bot.tree.command(name="panel", description="Send the Premium Whitelist Panel to the current channel (Admin only)")
 @app_commands.checks.has_permissions(administrator=True)
 async def setup_panel(interaction: discord.Interaction):
+    # 🟢 1. On répond de manière éphémère à l'admin (Lui seul voit ce message de confirmation)
+    await interaction.response.send_message("✅ Whitelist panel successfully sent anonymously!", ephemeral=True)
+    
+    # 🟢 2. On envoie l'embed classique directement au salon (Pas de mention "L'utilisateur a utilisé /setup_panel")
     embed = discord.Embed(
         title="🍏 Apple X — Premium Whitelist Panel",
         description=(
@@ -345,6 +345,7 @@ async def setup_panel(interaction: discord.Interaction):
     )
     embed.set_footer(text="Apple X Security System", icon_url=bot.user.avatar.url if bot.user.avatar else None)
     
-    await interaction.response.send_message(embed=embed, view=WhitelistView())
+    # Send directly to the channel
+    await interaction.channel.send(embed=embed, view=WhitelistView())
 
 bot.run(TOKEN)
