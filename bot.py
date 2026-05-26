@@ -8,9 +8,6 @@ import requests
 import base64
 import json
 import uuid
-import re         # 🟢 Corrigé : Importation ajoutée au scope global !
-import random     # 🟢 Corrigé : Importation ajoutée au scope global !
-import string     # 🟢 Corrigé : Importation ajoutée au scope global !
 
 # =========================================================================
 # ⚙️ GLOBAL CONFIGURATION
@@ -20,11 +17,11 @@ GH_API_TOKEN = os.getenv("GH_API_TOKEN")
 STATS_CHANNEL_ID = os.getenv("CHANNEL_ID")
 
 # --- WHITELIST CONFIGURATION ---
-REPO_NAME = "x165x486x132/Apple-X-Key"    
+REPO_NAME = "x165x486x132/Apple-X-Key"    # Ton dépôt public officiel
 FILE_PATH = "hwid_db.json"               
-ROLE_PREMIUM_ID = 1498644209840951468    # Premium/Booster Role ID
-ROLE_BOOSTER_ID = 1055452140522446889    # Second Booster Role ID
-PREMIUM_GAMEPASS_ID = 1817589078         # Roblox GamePass ID for the Purchase panel button
+ROLE_PREMIUM_ID = 1498644209840951468    # Rôle Booster/Premium (Donné après achat)
+ROLE_BOOSTER_ID = 1055452140522446889    # Second Rôle Booster (Boosters de serveur)
+PREMIUM_GAMEPASS_ID = 1817589078         # ID de ton GamePass Roblox pour l'achat Premium
 
 # --- ANTI-MALICIOUS LINK CONFIGURATION ---
 FORBIDDEN_FILENAMES = [
@@ -40,98 +37,6 @@ FORBIDDEN_LINKS = [
     "discord-nitro.gift", 
     "steamspecial.com"    
 ]
-
-# =========================================================================
-# 🛡️ APPLE X VIRTUAL MACHINE OBFUSCATION SUITE (LVM ENGINE)
-# =========================================================================
-def generate_confusing_name(length=14):
-    """Génère un nom de variable extrêmement complexe basé sur des l, I, 1 et i"""
-    chars = ['I', 'l', '1', 'i']
-    first_char = random.choice(['I', 'l']) # Lua variables cannot start with a number
-    return first_char + ''.join(random.choice(chars) for _ in range(length - 1))
-
-def obfuscate_lua_to_vm(source_code):
-    """Compile le script Lua en bytecode virtuel XORé et l'enrobe d'un interpréteur LVM"""
-    # 1. Nettoyage de tous les commentaires
-    source_code = re.sub(r'--\[\[.*?\]\]', '', source_code, flags=re.DOTALL)
-    source_code = re.sub(r'--[^\n]*', '', source_code)
-    source_code = source_code.strip()
-    
-    if not source_code:
-        return "-- Apple X VM: Empty Input Script"
-        
-    # Découpage du code en petits paquets de bytecode virtuel (taille de chunk dynamique)
-    chunk_size = random.randint(6, 12)
-    chunks = [source_code[i:i+chunk_size] for i in range(0, len(source_code), chunk_size)]
-    
-    xor_key = random.randint(55, 215) # Clé XOR de sécurité dynamique
-    obfuscated_table = []
-    
-    # Noms de variables confuses pour la VM
-    vm_name = generate_confusing_name()
-    stack_name = generate_confusing_name()
-    pc_name = generate_confusing_name()
-    instr_name = generate_confusing_name()
-    decrypt_helper_name = generate_confusing_name()
-    res_name = generate_confusing_name()
-    chunk_data_name = generate_confusing_name()
-    
-    # Encodage de chaque chunk d'instruction
-    for chunk in chunks:
-        enc = [str(ord(char) ^ xor_key) for char in chunk]
-        b64_str = base64.b64encode(",".join(enc).encode('utf-8')).decode('utf-8')
-        obfuscated_table.append(f'"{b64_str}"')
-        
-    table_content = ",\n        ".join(obfuscated_table)
-    
-    # Génération du code de l'interpréteur virtuel (LVM Emulator)
-    vm_payload = (
-        f"-- Obfuscated with Apple X LVM Suite v5.0 (Ultimate Edition)\n"
-        f"local {vm_name} = (function(...)\n"
-        f"    local T = {{\n"
-        f"        {table_content}\n"
-        f"    }}\n"
-        f"    local {decrypt_helper_name} = function(s)\n"
-        f"        local b = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'\n"
-        f"        s = string.gsub(s, '[^'..b..'=]', '')\n"
-        f"        local dec = (s:gsub('.', function(x)\n"
-        f"            if (x == '=') then return '' end\n"
-        f"            local r,f='',(b:find(x)-1)\n"
-        f"            for i=6,1,-1 do r=r..(f%2^i-f%2^(i-1)>0 and '1' or '0') end\n"
-        f"            return r\n"
-        f"        end):gsub('%d%d%d?%d?%d?%d?%d?%d?', function(x)\n"
-        f"            if (#x ~= 8) then return '' end\n"
-        f"            local c=0\n"
-        f"            for i=1,8 do c=c+(x:sub(i,i)=='1' and 2^(8-i) or 0) end\n"
-        f"            return string.char(c)\n"
-        f"        end))\n"
-        f"        return dec\n"
-        f"    end\n"
-        f"    local {stack_name} = {{}}\n"
-        f"    local {pc_name} = 1\n"
-        f"    while {pc_name} <= #T do\n"
-        f"        local {instr_name} = T[{pc_name}]\n"
-        f"        local {chunk_data_name} = {decrypt_helper_name}({instr_name})\n"
-        f"        local {res_name} = ''\n"
-        f"        for val in string.gmatch({chunk_data_name}, '([^,]+)') do\n"
-        f"            local b = tonumber(val)\n"
-        f"            {res_name} = {res_name} .. string.char(bit32 and bit32.bxor(b, {xor_key}) or (b % {xor_key}))\n"
-        f"        end\n"
-        f"        table.insert({stack_name}, {res_name})\n"
-        f"        {pc_name} = {pc_name} + 1\n"
-        f"    end\n"
-        f"    local final_code = table.concat({stack_name})\n"
-        f"    local success, err = pcall(function()\n"
-        f"        local fn, compile_err = loadstring(final_code)\n"
-        f"        if fn then fn() else error(compile_err) end\n"
-        f"        return true\n"
-        f"    end)\n"
-        f"    if not success then\n"
-        f"        error('Apple X VM: Runtime decryption error.' .. tostring(err))\n"
-        f"    end\n"
-        f"end)(...)\n"
-    )
-    return vm_payload
 
 # =========================================================================
 # 📂 GITHUB API UTILS
@@ -169,6 +74,7 @@ class WhitelistModal(ui.Modal):
         super().__init__(title=f"Apple X {role_type} Whitelist")
         self.role_type = role_type
         
+        # Unique Input Field: Roblox HWID only (No Username required)
         self.hwid_input = ui.TextInput(
             label="Roblox HWID",
             placeholder="Paste your Roblox ClientId/HWID here...",
@@ -188,6 +94,7 @@ class WhitelistModal(ui.Modal):
         db, sha = get_github_db()
         user_id_str = str(interaction.user.id)
         
+        # Saves Discord username as placeholder to avoid breaking Roblox script logic
         db[user_id_str] = {
             "hwid": cleaned_hwid,
             "username": str(interaction.user),
@@ -196,13 +103,20 @@ class WhitelistModal(ui.Modal):
         
         success = update_github_db(db, sha)
         if success:
-            loader = '```lua\nloadstring(game:HttpGet("https://raw.githubusercontent.com/x165x486x132/AppleX/refs/heads/main/Game5"))()\n```'
+            # 🟢 On génère les deux loader de manière claire dans l'embed de succès !
+            loader_police = '```lua\nloadstring(game:HttpGet("https://raw.githubusercontent.com/x165x486x132/AppleX/refs/heads/main/Game5"))()\n```'
+            loader_scp = '```lua\nloadstring(game:HttpGet("https://raw.githubusercontent.com/x165x486x132/AppleX/refs/heads/main/Game6"))()\n```'
+            
             embed = discord.Embed(
-                title=f"🍏 Whitelisted successfully as {self.role_type}!",
-                description=f"Welcome to Apple X, {interaction.user.mention}!\n\n**Registered HWID:** `{cleaned_hwid}`\n\nYou can now execute the loader script directly in Roblox to claim your items:",
+                title=f"🍏 Purchase Registered successfully as {self.role_type}!",
+                description=f"Thank you for your support, {interaction.user.mention}!\n\n**Registered HWID:** `{cleaned_hwid}`\n\nYou can now execute your respective loader script directly in Roblox:",
                 color=0x57F287
             )
-            embed.add_field(name="📜 Loader Script", value=loader, inline=False)
+            
+            # Ajout des deux champs pour chaque jeu
+            embed.add_field(name="🚔 Police Roleplay", value=loader_police, inline=False)
+            embed.add_field(name="🧬 SCP: Roleplay", value=loader_scp, inline=False)
+            
             await interaction.followup.send(embed=embed, ephemeral=True)
         else:
             await interaction.followup.send("❌ Error saving to GitHub database. Please check if `GH_API_TOKEN` is configured correctly.", ephemeral=True)
@@ -228,6 +142,7 @@ class WhitelistView(ui.View):
 class BuyView(ui.View):
     def __init__(self):
         super().__init__(timeout=None)
+        # Adds a persistent Link Button pointing to your Roblox GamePass
         self.add_item(ui.Button(
             label="🛒 Buy Premium GamePass (15 Robux)",
             style=discord.ButtonStyle.link,
@@ -240,7 +155,7 @@ class AppleXBot(commands.Bot):
 
     async def setup_hook(self):
         self.add_view(WhitelistView())
-        self.add_view(BuyView()) 
+        self.add_view(BuyView()) # Register the link button view
         await self.tree.sync()
         print("✅ Slash commands and UI views successfully synchronized.")
 
@@ -302,7 +217,7 @@ async def cleanup_inactive_premium_users():
         else:
             print("❌ Failed to push cleaned database to GitHub.")
     else:
-        print("✨ Whitelist database is already clean.")
+        print("✨ Whitelist is already clean.")
 
 # =========================================================================
 # 📊 STATISTICS & LIFETIME TIMER
@@ -531,7 +446,7 @@ async def setup_buy_panel(interaction: discord.Interaction):
             "Choose one of the methods below to gain instant access!\n\n"
             "---"
         ),
-        color=0x9F33FF 
+        color=0x9F33FF # Couleur violette élégante pour Booster/Premium
     )
     
     embed.add_field(
@@ -566,44 +481,5 @@ async def setup_buy_panel(interaction: discord.Interaction):
     
     # Envoie le panneau de manière anonyme dans le salon
     await interaction.channel.send(embed=embed, view=BuyView())
-
-# =========================================================================
-# ⚙️ 🟢 NEW SLASH COMMAND: OBFUSCATE (ADVANCED LVM ENGINE)
-# =========================================================================
-@bot.tree.command(name="obfuscate", description="Obfuscate your Lua script with Apple X LVM Engine")
-@app_commands.describe(file="The .lua or .txt file containing the script to obfuscate")
-async def obfuscate(interaction: discord.Interaction, file: discord.Attachment):
-    if not file.filename.endswith((".lua", ".txt")):
-        await interaction.response.send_message("❌ **Invalid File.** Please upload a `.lua` or `.txt` file.", ephemeral=True)
-        return
-
-    await interaction.response.defer(ephemeral=True)
-
-    try:
-        content = await file.read()
-        source_code = content.decode("utf-8", errors="ignore")
-
-        # 🟢 Generates advanced LVM virtual machine structure
-        obfuscated_code = obfuscate_lua_to_vm(source_code)
-
-        temp_filename = f"obfuscated_{uuid.uuid4().hex[:6]}.lua"
-        with open(temp_filename, "w", encoding="utf-8") as f:
-            f.write(obfuscated_code)
-
-        discord_file = discord.File(temp_filename, filename="AppleX_Obfuscated.lua")
-        
-        embed = discord.Embed(
-            title="🍏 Apple X — LVM Obfuscation Complete",
-            description="Your script has been compiled and wrapped into a highly protected Virtual Machine (LVM).",
-            color=0x57F287
-        )
-        embed.set_footer(text="Apple X Protection Suite")
-        
-        await interaction.followup.send(embed=embed, file=discord_file, ephemeral=True)
-        os.remove(temp_filename)
-
-    except Exception as e:
-        print(f"❌ Obfuscation Error: {e}")
-        await interaction.followup.send(f"❌ **An error occurred during obfuscation:** {e}", ephemeral=True)
 
 bot.run(TOKEN)
