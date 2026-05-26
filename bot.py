@@ -8,6 +8,9 @@ import requests
 import base64
 import json
 import uuid
+import re
+import random
+import string
 
 # =========================================================================
 # ⚙️ GLOBAL CONFIGURATION
@@ -37,6 +40,80 @@ FORBIDDEN_LINKS = [
     "discord-nitro.gift", 
     "steamspecial.com"    
 ]
+
+# =========================================================================
+# 🛡️ APPLE X OBFUSCATION SUITE (LEXICAL & XOR ENGINE)
+# =========================================================================
+def generate_confusing_name(length=12):
+    """Génère un nom de variable extrêmement complexe basé sur des l, I et 1"""
+    chars = ['I', 'l', '1', 'i']
+    first_char = random.choice(['I', 'l']) # Lua variables cannot start with a number
+    return first_char + ''.join(random.choice(chars) for _ in range(length - 1))
+
+def obfuscate_lua(source_code):
+    # 1. Nettoyage de tous les commentaires
+    source_code = re.sub(r'--\[\[.*?\]\]', '', source_code, flags=re.DOTALL)
+    source_code = re.sub(r'--[^\n]*', '', source_code)
+
+    # 2. Chiffrement XOR de toutes les chaînes de caractères
+    string_pattern = r'("(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\')'
+    xor_key = random.randint(60, 220) # Clé de chiffrement dynamique
+    
+    def encrypt_match(match):
+        original = match.group(0)
+        inner_str = original[1:-1]
+        
+        # Conversion de chaque caractère en octet XORé
+        encrypted_bytes = []
+        for char in inner_str:
+            encrypted_bytes.append(str(ord(char) ^ xor_key))
+        
+        byte_array_str = "{" + ",".join(encrypted_bytes) + "}"
+        return f"_DECRYPT_STR({byte_array_str})"
+
+    decrypt_fn_name = generate_confusing_name()
+    source_code = re.sub(string_pattern, encrypt_match, source_code)
+    
+    # Injection du décodeur XOR masqué (bit32.bxor est natif sur Roblox Luau)
+    decrypt_helper = (
+        f"local {decrypt_fn_name} = function(t)\n"
+        f"    local r = ''\n"
+        f"    for _, b in ipairs(t) do\n"
+        f"        r = r .. string.char(bit32 and bit32.bxor(b, {xor_key}) or (b % {xor_key}))\n"
+        f"    end\n"
+        f"    return r\n"
+        f"end\n"
+    )
+    source_code = source_code.replace("_DECRYPT_STR", decrypt_fn_name)
+    
+    # 3. Renommage des variables locales en caractères confus
+    local_pattern = r'\blocal\s+([a-zA-Z_][a-zA-Z0-9_]*)\b'
+    locals_found = re.findall(local_pattern, source_code)
+    
+    reserved_keywords = {
+        "true", "false", "nil", "and", "or", "not", "function", "end", "if", 
+        "then", "else", "elseif", "while", "do", "for", "in", "return", 
+        "local", "break", "repeat", "until"
+    }
+    
+    locals_to_rename = set(locals_found) - reserved_keywords
+    
+    rename_map = {}
+    for name in locals_to_rename:
+        rename_map[name] = generate_confusing_name()
+        
+    for old_name, new_name in rename_map.items():
+        source_code = re.sub(r'\b' + re.escape(old_name) + r'\b', new_name, source_code)
+        
+    # Assemblage final
+    obfuscated = (
+        f"-- Obfuscated with Apple X Obfuscation Suite\n"
+        f"{decrypt_helper}\n"
+        f"{source_code}"
+    )
+    
+    # Minification des lignes vides
+    return "\n".join([line for line in obfuscated.splitlines() if line.strip() != ""])
 
 # =========================================================================
 # 📂 GITHUB API UTILS
@@ -69,80 +146,70 @@ intents.message_content = True
 intents.members = True 
 
 # --- DISCORD UI: WHITELIST & CLAIM MODAL ---
-class WhitelistModal(ui.Modal):
-    def __init__(self, role_type: str):
-        super().__init__(title=f"Apple X {role_type} Whitelist")
-        self.role_type = role_type
-        
-        # Unique Input Field: Roblox HWID only (No Username required)
-        self.hwid_input = ui.TextInput(
-            label="Roblox HWID",
-            placeholder="Paste your Roblox ClientId/HWID here...",
-            style=discord.TextStyle.short,
-            min_length=15,
-            max_length=100,
-            required=True
-        )
-        self.add_item(self.hwid_input)
+class WhitelistModal(ui.Modal, title="Apple X Premium Purchase"):
+    roblox_username = ui.TextInput(
+        label="Roblox Username",
+        placeholder="Enter your exact Roblox Username...",
+        style=discord.TextStyle.short,
+        min_length=3,
+        max_length=20,
+        required=True
+    )
+    hwid_input = ui.TextInput(
+        label="Roblox HWID",
+        placeholder="Paste your Roblox ClientId/HWID here...",
+        style=discord.TextStyle.short,
+        min_length=15,
+        max_length=100,
+        required=True
+    )
 
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         
+        username = self.roblox_username.value.strip()
         raw_hwid = self.hwid_input.value
         cleaned_hwid = raw_hwid.strip().upper().replace("{", "").replace("}", "").replace(" ", "")
         
         db, sha = get_github_db()
         user_id_str = str(interaction.user.id)
         
-        # Saves Discord username as placeholder to avoid breaking Roblox script logic
         db[user_id_str] = {
             "hwid": cleaned_hwid,
-            "username": str(interaction.user),
+            "username": username,
             "role": self.role_type 
         }
         
         success = update_github_db(db, sha)
         if success:
-            # 🟢 On génère les deux loader de manière claire dans l'embed de succès !
-            loader_police = '```lua\nloadstring(game:HttpGet("https://raw.githubusercontent.com/x165x486x132/AppleX/refs/heads/main/Game5"))()\n```'
-            loader_scp = '```lua\nloadstring(game:HttpGet("https://raw.githubusercontent.com/x165x486x132/AppleX/refs/heads/main/Game6"))()\n```'
-            
+            loader = '```lua\nloadstring(game:HttpGet("https://raw.githubusercontent.com/x165x486x132/AppleX/refs/heads/main/Game5"))()\n```'
             embed = discord.Embed(
                 title=f"🍏 Purchase Registered successfully as {self.role_type}!",
-                description=f"Thank you for your support, {interaction.user.mention}!\n\n**Registered HWID:** `{cleaned_hwid}`\n\nYou can now execute your respective loader script directly in Roblox:",
+                description=f"Thank you for your support, {interaction.user.mention}!\n\n**Registered HWID:** `{cleaned_hwid}`\n\nYou can now execute the loader script directly in Roblox to claim your items:",
                 color=0x57F287
             )
-            
-            # Ajout des deux champs pour chaque jeu
-            embed.add_field(name="🚔 Police Roleplay", value=loader_police, inline=False)
-            embed.add_field(name="🧬 SCP: Roleplay", value=loader_scp, inline=False)
-            
+            embed.add_field(name="📜 Loader Script", value=loader, inline=False)
             await interaction.followup.send(embed=embed, ephemeral=True)
         else:
-            await interaction.followup.send("❌ Error saving to GitHub database. Please check if `GH_API_TOKEN` is configured correctly.", ephemeral=True)
+            await interaction.followup.send("❌ Error saving to GitHub database. Please check if `GH_API_TOKEN` is configured.", ephemeral=True)
 
 # --- DISCORD UI: PANEL BUTTON VIEW (WHITELIST) ---
 class WhitelistView(ui.View):
     def __init__(self):
         super().__init__(timeout=None) 
 
-    @ui.button(label="🍏 Whitelist Device", style=discord.ButtonStyle.green, custom_id="whitelist_btn")
+    @ui.button(label="🍏 Unlock Premium", style=discord.ButtonStyle.green, custom_id="whitelist_btn")
     async def whitelist_button(self, interaction: discord.Interaction, button: ui.Button):
         has_premium = any(role.id == ROLE_PREMIUM_ID for role in interaction.user.roles)
         has_booster = any(role.id == ROLE_BOOSTER_ID for role in interaction.user.roles)
         
-        if not has_premium and not has_booster:
-            await interaction.response.send_message("❌ **Access Denied.** This premium panel is reserved for Server Boosters and Premium users.", ephemeral=True)
-            return
-        
-        role_type = "Premium" if has_premium else "Booster"
+        role_type = "Premium" if has_premium or not has_booster else "Booster"
         await interaction.response.send_modal(WhitelistModal(role_type))
 
 # --- DISCORD UI: LINK BUTTON VIEW (PURCHASE INFO) ---
 class BuyView(ui.View):
     def __init__(self):
         super().__init__(timeout=None)
-        # Adds a persistent Link Button pointing to your Roblox GamePass
         self.add_item(ui.Button(
             label="🛒 Buy Premium GamePass (15 Robux)",
             style=discord.ButtonStyle.link,
@@ -155,7 +222,7 @@ class AppleXBot(commands.Bot):
 
     async def setup_hook(self):
         self.add_view(WhitelistView())
-        self.add_view(BuyView()) # Register the link button view
+        self.add_view(BuyView()) 
         await self.tree.sync()
         print("✅ Slash commands and UI views successfully synchronized.")
 
@@ -213,11 +280,11 @@ async def cleanup_inactive_premium_users():
     if changed:
         success = update_github_db(db, sha)
         if success:
-            print("✅ Database cleanup successfully pushed to GitHub.")
+            print("✅ Whitelist database successfully updated on GitHub.")
         else:
             print("❌ Failed to push cleaned database to GitHub.")
     else:
-        print("✨ Whitelist is already clean.")
+        print("✨ Whitelist database is already clean.")
 
 # =========================================================================
 # 📊 STATISTICS & LIFETIME TIMER
@@ -481,5 +548,123 @@ async def setup_buy_panel(interaction: discord.Interaction):
     
     # Envoie le panneau de manière anonyme dans le salon
     await interaction.channel.send(embed=embed, view=BuyView())
+
+# =========================================================================
+# ⚙️ 🟢 NEW SLASH COMMAND: OBFUSCATE (LEXICAL & XOR ENGINE)
+# =========================================================================
+@bot.tree.command(name="obfuscate", description="Obfuscate your Lua script with Apple X Obfuscation Suite")
+@app_commands.describe(file="The .lua or .txt file containing the script to obfuscate")
+async def obfuscate(interaction: discord.Interaction, file: discord.Attachment):
+    # Only allow .lua or .txt extensions to avoid processing binary/broken files
+    if not file.filename.endswith((".lua", ".txt")):
+        await interaction.response.send_message("❌ **Invalid File.** Please upload a `.lua` or `.txt` file.", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True)
+
+    try:
+        # Download the file content
+        content = await file.read()
+        source_code = content.decode("utf-8", errors="ignore")
+
+        # Process obfuscation using the built-in lexical + XOR engine
+        obfuscated_code = obfuscate_lua(source_code)
+
+        # Write to a temporary file locally on the runner
+        temp_filename = f"obfuscated_{uuid.uuid4().hex[:6]}.lua"
+        with open(temp_filename, "w", encoding="utf-8") as f:
+            f.write(obfuscated_code)
+
+        # Upload as a Discord attachment file
+        discord_file = discord.File(temp_filename, filename="AppleX_Obfuscated.lua")
+        
+        embed = discord.Embed(
+            title="🍏 Apple X — Obfuscation Complete",
+            description="Your script has been successfully processed and obfuscated. See the attached file below.",
+            color=0x57F287
+        )
+        embed.set_footer(text="Apple X Protection Suite")
+        
+        await interaction.followup.send(embed=embed, file=discord_file, ephemeral=True)
+
+        # Delete the temporary file
+        os.remove(temp_filename)
+
+    except Exception as e:
+        print(f"❌ Obfuscation Error: {e}")
+        await interaction.followup.send(f"❌ **An error occurred during obfuscation:** {e}", ephemeral=True)
+
+# --- HELPER FUNCTIONS FOR OBFUSCATOR ---
+def generate_confusing_name(length=12):
+    """Génère un nom de variable extrêmement complexe basé sur des l, I, 1 et i"""
+    chars = ['I', 'l', '1', 'i']
+    first_char = random.choice(['I', 'l']) # Lua variables cannot start with a number
+    return first_char + ''.join(random.choice(chars) for _ in range(length - 1))
+
+def obfuscate_lua(source_code):
+    import random
+    # 1. Clean all comments to minimize human readable texts
+    source_code = re.sub(r'--\[\[.*?\]\]', '', source_code, flags=re.DOTALL)
+    source_code = re.sub(r'--[^\n]*', '', source_code)
+
+    # 2. Encrypt all strings using a dynamic XOR cipher
+    string_pattern = r'("(?:[^"\\]|\\.)*"|\'(?:[^\'\\]|\\.)*\')'
+    xor_key = random.randint(60, 220) # Dynamic encryption key
+    
+    def encrypt_match(match):
+        original = match.group(0)
+        inner_str = original[1:-1]
+        
+        # Convert each character into a XOR'ed byte representation
+        encrypted_bytes = []
+        for char in inner_str:
+            encrypted_bytes.append(str(ord(char) ^ xor_key))
+        
+        byte_array_str = "{" + ",".join(encrypted_bytes) + "}"
+        return f"_DECRYPT_STR({byte_array_str})"
+
+    decrypt_fn_name = generate_confusing_name()
+    source_code = re.sub(string_pattern, encrypt_match, source_code)
+    
+    # Inject the masked XOR decrypt function (bit32.bxor is native on Roblox Luau)
+    decrypt_helper = (
+        f"local {decrypt_fn_name} = function(t)\n"
+        f"    local r = ''\n"
+        f"    for _, b in ipairs(t) do\n"
+        f"        r = r .. string.char(bit32 and bit32.bxor(b, {xor_key}) or (b % {xor_key}))\n"
+        f"    end\n"
+        f"    return r\n"
+        f"end\n"
+    )
+    source_code = source_code.replace("_DECRYPT_STR", decrypt_fn_name)
+    
+    # 3. Rename all local variables with confusing names
+    local_pattern = r'\blocal\s+([a-zA-Z_][a-zA-Z0-9_]*)\b'
+    locals_found = re.findall(local_pattern, source_code)
+    
+    reserved_keywords = {
+        "true", "false", "nil", "and", "or", "not", "function", "end", "if", 
+        "then", "else", "elseif", "while", "do", "for", "in", "return", 
+        "local", "break", "repeat", "until"
+    }
+    
+    locals_to_rename = set(locals_found) - reserved_keywords
+    
+    rename_map = {}
+    for name in locals_to_rename:
+        rename_map[name] = generate_confusing_name()
+        
+    for old_name, new_name in rename_map.items():
+        source_code = re.sub(r'\b' + re.escape(old_name) + r'\b', new_name, source_code)
+        
+    # Assemble the final payload
+    obfuscated = (
+        f"-- Obfuscated with Apple X Obfuscation Suite\n"
+        f"{decrypt_helper}\n"
+        f"{source_code}"
+    )
+    
+    # Remove empty lines for minification
+    return "\n".join([line for line in obfuscated.splitlines() if line.strip() != ""])
 
 bot.run(TOKEN)
