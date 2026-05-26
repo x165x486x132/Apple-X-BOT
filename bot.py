@@ -24,7 +24,7 @@ REPO_NAME = "x165x486x132/Apple-X-Key"    # Ton dépôt public officiel
 FILE_PATH = "hwid_db.json"               
 ROLE_PREMIUM_ID = 1498644209840951468    # Rôle Booster/Premium (Donné après achat)
 ROLE_BOOSTER_ID = 1055452140522446889    # Second Rôle Booster (Boosters de serveur)
-PREMIUM_GAMEPASS_ID = 1817589078         # ID de ton GamePass Roblox pour l'achat Premium
+PREMIUM_GAMEPASS_ID = 1817589078         # ID de ton Gamepass Roblox pour l'achat Premium
 
 # --- ANTI-MALICIOUS LINK CONFIGURATION ---
 FORBIDDEN_FILENAMES = [
@@ -42,7 +42,7 @@ FORBIDDEN_LINKS = [
 ]
 
 # =========================================================================
-# 🛡️ APPLE X OBFUSCATION SUITE (ADVANCED LVM ENGINE)
+# 🛡️ APPLE X VIRTUAL MACHINE OBFUSCATION SUITE (LVM ENGINE)
 # =========================================================================
 def generate_confusing_name(length=14):
     """Génère un nom de variable extrêmement complexe basé sur des l, I, 1 et i"""
@@ -217,16 +217,9 @@ class WhitelistModal(ui.Modal):
             loader_scp = '```lua\nloadstring(game:HttpGet("https://raw.githubusercontent.com/x165x486x132/AppleX/refs/heads/main/Game6"))()\n```'
             
             embed = discord.Embed(
-                title="🍏 Premium Whitelist Activated!",
-                description=(
-                    f"Welcome to **Apple X**, {interaction.user.mention}!\n"
-                    f"Your device has been registered in our database.\n\n"
-                    f"**Registered HWID:** `{cleaned_hwid}`\n"
-                    f"**Access Tier:** `{self.role_type}`\n\n"
-                    "Please run the appropriate loadstring below inside your executor:"
-                ),
-                color=0x30d158,
-                timestamp=datetime.datetime.now(datetime.timezone.utc)
+                title=f"🍏 Purchase Registered successfully as {self.role_type}!",
+                description=f"Thank you for your support, {interaction.user.mention}!\n\n**Registered HWID:** `{cleaned_hwid}`\n\nYou can now execute your respective loader script directly in Roblox:",
+                color=0x57F287
             )
             
             embed.add_field(name="🚔 Police Roleplay (Game 5)", value=loader_police, inline=False)
@@ -258,9 +251,9 @@ class WhitelistView(ui.View):
 class BuyView(ui.View):
     def __init__(self):
         super().__init__(timeout=None)
-        # 🟢 Laisse uniquement l'achat direct du GamePass
+        # Adds a persistent Link Button pointing to your Roblox Gamepass
         self.add_item(ui.Button(
-            label="🛒 Buy Premium GamePass",
+            label="🛒 Buy Premium Gamepass", # 🟢 Corrigé : orthographe "Gamepass" respectée !
             style=discord.ButtonStyle.link,
             url=f"https://www.roblox.com/game-pass/{PREMIUM_GAMEPASS_ID}/Premium"
         ))
@@ -512,7 +505,7 @@ async def list_members(interaction: discord.Interaction):
         member_list_str += f"\n\n*... and {total_members - 30} more members.*"
 
     embed = discord.Embed(
-        title=f"👥 Member Directory — {guild.name}",
+        title="👥 Member Directory — " + guild.name,
         description=f"Total Members in server: **{total_members}**\n\n{member_list_str}",
         color=0x2b2d31,
         timestamp=datetime.datetime.now(datetime.timezone.utc)
@@ -562,12 +555,11 @@ async def setup_buy_panel(interaction: discord.Interaction):
     embed = discord.Embed(
         title="🍏 How to Get Apple X Premium Access",
         description=(
-            "Want to unlock lifetime key and more scripts? "
+            "Want to unlock lifetime premium bypasses and elite scripts in Highway Legends? "
             "Choose one of the methods below to gain instant access!\n\n"
             "---"
         ),
-        color=0xbf5af2,
-        timestamp=datetime.datetime.now(datetime.timezone.utc)
+        color=0x9F33FF 
     )
     
     embed.add_field(
@@ -580,9 +572,9 @@ async def setup_buy_panel(interaction: discord.Interaction):
     )
     
     embed.add_field(
-        name="🛒 Option 2: Buy Roblox Gamepass (15 Robux Only!)",
+        name="🛒 Option 2: Buy Roblox Gamepass (15 Robux Only!)", # 🟢 Modifié : orthographe "Gamepass" respectée !
         value=(
-            "Purchase the official **Apple X Premium Gamepass** on Roblox for only **15 Robux**! "
+            "Purchase the official **Apple X Premium Gamepass** on Roblox for only **15 Robux**! " # 🟢 Modifié !
             "Click the button below to purchase it directly on Roblox."
         ),
         inline=False
@@ -592,7 +584,7 @@ async def setup_buy_panel(interaction: discord.Interaction):
         name="📩 How to Claim Your Premium Status?",
         value=(
             "• **If you Boosted :** Click the button on our Whitelist Panel to register your device instantly!\n"
-            "• **If you bought the GamePass :** DM the Owner / Admin directly with proof of purchase to get your Premium role, or use the Whitelist Panel button to register yourself!\n\n"
+            "• **If you bought the Gamepass :** DM the Owner / Admin directly with proof of purchase to get your Premium role, or use the Whitelist Panel button to register yourself!\n\n" # 🟢 Modifié !
             "⚠️ *Always make sure your Roblox Inventory is set to 'Everyone' in your Privacy Settings before whitelisting!*"
         ),
         inline=False
@@ -602,5 +594,44 @@ async def setup_buy_panel(interaction: discord.Interaction):
     
     # Envoie le panneau de manière anonyme dans le salon
     await interaction.channel.send(embed=embed, view=BuyView())
+
+# =========================================================================
+# ⚙️ 🟢 NEW SLASH COMMAND: OBFUSCATE (ADVANCED LVM ENGINE)
+# =========================================================================
+@bot.tree.command(name="obfuscate", description="Obfuscate your Lua script with Apple X LVM Engine")
+@app_commands.describe(file="The .lua or .txt file containing the script to obfuscate")
+async def obfuscate(interaction: discord.Interaction, file: discord.Attachment):
+    if not file.filename.endswith((".lua", ".txt")):
+        await interaction.response.send_message("❌ **Invalid File.** Please upload a `.lua` or `.txt` file.", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True)
+
+    try:
+        content = await file.read()
+        source_code = content.decode("utf-8", errors="ignore")
+
+        # Generates advanced LVM virtual machine structure
+        obfuscated_code = obfuscate_lua_to_vm(source_code)
+
+        temp_filename = f"obfuscated_{uuid.uuid4().hex[:6]}.lua"
+        with open(temp_filename, "w", encoding="utf-8") as f:
+            f.write(obfuscated_code)
+
+        discord_file = discord.File(temp_filename, filename="AppleX_Obfuscated.lua")
+        
+        embed = discord.Embed(
+            title="🍏 Apple X — LVM Obfuscation Complete",
+            description="Your script has been compiled and wrapped into a highly protected Virtual Machine (LVM).",
+            color=0x57F287
+        )
+        embed.set_footer(text="Apple X Protection Suite")
+        
+        await interaction.followup.send(embed=embed, file=discord_file, ephemeral=True)
+        os.remove(temp_filename)
+
+    except Exception as e:
+        print(f"❌ Obfuscation Error: {e}")
+        await interaction.followup.send(f"❌ **An error occurred during obfuscation:** {e}", ephemeral=True)
 
 bot.run(TOKEN)
