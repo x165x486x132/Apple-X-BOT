@@ -8,6 +8,9 @@ import requests
 import base64
 import json
 import uuid
+import re         
+import random     
+import string     
 
 # =========================================================================
 # ⚙️ GLOBAL CONFIGURATION
@@ -37,6 +40,115 @@ FORBIDDEN_LINKS = [
     "discord-nitro.gift", 
     "steamspecial.com"    
 ]
+
+# =========================================================================
+# 🛡️ APPLE X OBFUSCATION SUITE (ADVANCED LVM ENGINE)
+# =========================================================================
+def generate_confusing_name(length=14):
+    """Génère un nom de variable extrêmement complexe basé sur des l, I, 1 et i"""
+    chars = ['I', 'l', '1', 'i']
+    first_char = random.choice(['I', 'l']) # Lua variables cannot start with a number
+    return first_char + ''.join(random.choice(chars) for _ in range(length - 1))
+
+def obfuscate_lua_to_vm(source_code):
+    """Compile le script Lua en bytecode virtuel XORé et l'enrobe d'un interpréteur LVM"""
+    # 1. Nettoyage de tous les commentaires
+    source_code = re.sub(r'--\[\[.*?\]\]', '', source_code, flags=re.DOTALL)
+    source_code = re.sub(r'--[^\n]*', '', source_code)
+    source_code = source_code.strip()
+    
+    if not source_code:
+        return "-- Apple X VM: Empty Input Script"
+        
+    # Découpage du code en petits paquets de bytecode virtuel (taille de chunk dynamique)
+    chunk_size = random.randint(6, 12)
+    chunks = [source_code[i:i+chunk_size] for i in range(0, len(source_code), chunk_size)]
+    
+    xor_key = random.randint(60, 220) # Clé XOR de sécurité dynamique
+    obfuscated_table = []
+    
+    # Noms de variables confuses pour la VM
+    vm_name = generate_confusing_name()
+    stack_name = generate_confusing_name()
+    pc_name = generate_confusing_name()
+    instr_name = generate_confusing_name()
+    decrypt_helper_name = generate_confusing_name()
+    res_name = generate_confusing_name()
+    chunk_data_name = generate_confusing_name()
+    
+    # Encodage de chaque chunk d'instruction
+    for chunk in chunks:
+        enc = [str(ord(char) ^ xor_key) for char in chunk]
+        b64_str = base64.b64encode(",".join(enc).encode('utf-8')).decode('utf-8')
+        obfuscated_table.append(f'"{b64_str}"')
+        
+    table_content = ",\n        ".join(obfuscated_table)
+    
+    # Génération du code de l'interpréteur virtuel (LVM Emulator)
+    vm_payload = (
+        f"-- Obfuscated with Apple X LVM Suite v5.0 (Ultimate Edition)\n"
+        f"local {vm_name} = (function(...)\n"
+        f"    local T = {{\n"
+        f"        {table_content}\n"
+        f"    }}\n"
+        f"    local {decrypt_helper_name} = function(data)\n"
+        f"        local b = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'\n"
+        f"        local chars = {{}}\n"
+        f"        for i = 1, #b do\n"
+        f"            chars[b:sub(i,i)] = i - 1\n"
+        f"        end\n"
+        f"        data = string.gsub(data, '[^'..b..'=]', '')\n"
+        f"        while #data % 4 ~= 0 do\n"
+        f"            data = data .. '='\n"
+        f"        end\n"
+        f"        local decoded = {{}}\n"
+        f"        local len = #data\n"
+        f"        for i = 1, len, 4 do\n"
+        f"            local c1 = chars[data:sub(i, i)] or 0\n"
+        f"            local c2 = chars[data:sub(i+1, i+1)] or 0\n"
+        f"            local c3 = chars[data:sub(i+2, i+2)] or 0\n"
+        f"            local c4 = chars[data:sub(i+3, i+3)] or 0\n"
+        f"            local n = (c1 * 262144) + (c2 * 4096) + (c3 * 64) + c4\n"
+        f"            local b1 = math.floor(n / 65536) % 256\n"
+        f"            local b2 = math.floor(n / 256) % 256\n"
+        f"            local b3 = n % 256\n"
+        f"            table.insert(decoded, string.char(b1))\n"
+        f"            if data:sub(i+2, i+2) ~= '=' then\n"
+        f"                table.insert(decoded, string.char(b2))\n"
+        f"            end\n"
+        f"            if data:sub(i+3, i+3) ~= '=' then\n"
+        f"                table.insert(decoded, string.char(b3))\n"
+        f"            end\n"
+        f"        end\n"
+        f"        return table.concat(decoded)\n"
+        f"    end\n"
+        f"    local {stack_name} = {{}}\n"
+        f"    local {pc_name} = 1\n"
+        f"    while {pc_name} <= #T do\n"
+        f"        local {instr_name} = T[{pc_name}]\n"
+        f"        local {chunk_data_name} = {decrypt_helper_name}({instr_name})\n"
+        f"        local {res_name} = ''\n"
+        f"        for val in string.gmatch({chunk_data_name}, '([^,]+)') do\n"
+        f"            local b = tonumber(val)\n"
+        f"            if b then\n"
+        f"                {res_name} = {res_name} .. string.char(bit32.bxor(b, {xor_key}))\n"
+        f"            end\n"
+        f"        end\n"
+        f"        table.insert({stack_name}, {res_name})\n"
+        f"        {pc_name} = {pc_name} + 1\n"
+        f"    end\n"
+        f"    local final_code = table.concat({stack_name})\n"
+        f"    local success, err = pcall(function()\n"
+        f"        local fn, compile_err = loadstring(final_code)\n"
+        f"        if fn then fn() else error(compile_err) end\n"
+        f"        return true\n"
+        f"    end)\n"
+        f"    if not success then\n"
+        f"        error('Apple X LVM: Runtime execution error.' .. tostring(err))\n"
+        f"    end\n"
+        f"end)(...)\n"
+    )
+    return vm_payload
 
 # =========================================================================
 # 📂 GITHUB API UTILS
@@ -74,7 +186,6 @@ class WhitelistModal(ui.Modal):
         super().__init__(title=f"Apple X {role_type} Whitelist")
         self.role_type = role_type
         
-        # Unique Input Field: Roblox HWID only (No Username required)
         self.hwid_input = ui.TextInput(
             label="Roblox HWID",
             placeholder="Paste your Roblox ClientId/HWID here...",
@@ -94,7 +205,6 @@ class WhitelistModal(ui.Modal):
         db, sha = get_github_db()
         user_id_str = str(interaction.user.id)
         
-        # Saves Discord username as placeholder to avoid breaking Roblox script logic
         db[user_id_str] = {
             "hwid": cleaned_hwid,
             "username": str(interaction.user),
@@ -103,19 +213,25 @@ class WhitelistModal(ui.Modal):
         
         success = update_github_db(db, sha)
         if success:
-            # 🟢 On génère les deux loader de manière claire dans l'embed de succès !
             loader_police = '```lua\nloadstring(game:HttpGet("https://raw.githubusercontent.com/x165x486x132/AppleX/refs/heads/main/Game5"))()\n```'
             loader_scp = '```lua\nloadstring(game:HttpGet("https://raw.githubusercontent.com/x165x486x132/AppleX/refs/heads/main/Game6"))()\n```'
             
             embed = discord.Embed(
-                title=f"🍏 Purchase Registered successfully as {self.role_type}!",
-                description=f"Thank you for your support, {interaction.user.mention}!\n\n**Registered HWID:** `{cleaned_hwid}`\n\nYou can now execute your respective loader script directly in Roblox:",
-                color=0x57F287
+                title="🍏 Premium Whitelist Activated!",
+                description=(
+                    f"Welcome to **Apple X**, {interaction.user.mention}!\n"
+                    f"Your device has been registered in our database.\n\n"
+                    f"**Registered HWID:** `{cleaned_hwid}`\n"
+                    f"**Access Tier:** `{self.role_type}`\n\n"
+                    "Please run the appropriate loadstring below inside your executor:"
+                ),
+                color=0x30d158,
+                timestamp=datetime.datetime.now(datetime.timezone.utc)
             )
             
-            # Ajout des deux champs pour chaque jeu
-            embed.add_field(name="🚔 Police Roleplay", value=loader_police, inline=False)
-            embed.add_field(name="🧬 SCP: Roleplay", value=loader_scp, inline=False)
+            embed.add_field(name="🚔 Police Roleplay (Game 5)", value=loader_police, inline=False)
+            embed.add_field(name="🧬 SCP: Roleplay (Game 6)", value=loader_scp, inline=False)
+            embed.set_footer(text="Apple X Protection Suite", icon_url=bot.user.avatar.url if bot.user.avatar else None)
             
             await interaction.followup.send(embed=embed, ephemeral=True)
         else:
@@ -142,9 +258,9 @@ class WhitelistView(ui.View):
 class BuyView(ui.View):
     def __init__(self):
         super().__init__(timeout=None)
-        # Adds a persistent Link Button pointing to your Roblox Gamepass
+        # 🟢 Laisse uniquement l'achat direct du Gamepass
         self.add_item(ui.Button(
-            label="🛒 Buy Premium Gamepass (15 Robux)",
+            label="🛒 Buy Premium Gamepass",
             style=discord.ButtonStyle.link,
             url=f"https://www.roblox.com/game-pass/{PREMIUM_GAMEPASS_ID}/Premium"
         ))
@@ -155,7 +271,7 @@ class AppleXBot(commands.Bot):
 
     async def setup_hook(self):
         self.add_view(WhitelistView())
-        self.add_view(BuyView()) # Register the link button view
+        self.add_view(BuyView()) 
         await self.tree.sync()
         print("✅ Slash commands and UI views successfully synchronized.")
 
@@ -217,7 +333,7 @@ async def cleanup_inactive_premium_users():
         else:
             print("❌ Failed to push cleaned database to GitHub.")
     else:
-        print("✨ Whitelist is already clean.")
+        print("✨ Whitelist database is already clean.")
 
 # =========================================================================
 # 📊 STATISTICS & LIFETIME TIMER
@@ -337,13 +453,16 @@ async def on_message(message):
             print(f"⏳ Timed out {message.author} for 1 week.")
 
             embed = discord.Embed(
-                title="🚨 Security Alert: Malicious Link Blocked",
-                description=f"An unauthorized link sent by {message.author.mention} has been intercepted and removed from the server.",
-                color=0x2b2d31,
-                timestamp=datetime.datetime.now()
+                title="🚨 Security Guard: Malicious Content Intercepted",
+                description=(
+                    f"An unauthorized link sent by {message.author.mention} was automatically removed.\n"
+                    f"This server is actively monitored by our security modules to maintain safety."
+                ),
+                color=0xff453a,
+                timestamp=datetime.datetime.now(datetime.timezone.utc)
             )
-            embed.add_field(name="📂 Evidence (Clickable Links)", value=detected_list_str, inline=False)
-            embed.add_field(name="⚖️ Punishment Applied", value="⏳ **1-Week Timeout**", inline=False)
+            embed.add_field(name="📂 Evidence Blocked", value=detected_list_str, inline=False)
+            embed.add_field(name="⚖️ Automated Action", value="⏳ **1-Week Timeout Applied**", inline=False)
             
             avatar_url = message.author.avatar.url if message.author.avatar else message.author.default_avatar.url
             embed.set_thumbnail(url=avatar_url)
@@ -357,7 +476,7 @@ async def on_message(message):
             if image_to_display:
                 embed.set_image(url=image_to_display)
             
-            embed.set_footer(text="Automated Security System", icon_url=bot.user.avatar.url if bot.user.avatar else None)
+            embed.set_footer(text="Apple X Anti-Link Engine", icon_url=bot.user.avatar.url if bot.user.avatar else None)
             await message.channel.send(embed=embed)
             
         except discord.Forbidden:
@@ -393,14 +512,14 @@ async def list_members(interaction: discord.Interaction):
         member_list_str += f"\n\n*... and {total_members - 30} more members.*"
 
     embed = discord.Embed(
-        title="👥 Member List — " + guild.name,
-        description=f"Total Members: **{total_members}**\n\n{member_list_str}",
+        title=f"👥 Member Directory — {guild.name}",
+        description=f"Total Members in server: **{total_members}**\n\n{member_list_str}",
         color=0x2b2d31,
-        timestamp=datetime.datetime.now()
+        timestamp=datetime.datetime.now(datetime.timezone.utc)
     )
     if guild.icon:
         embed.set_thumbnail(url=guild.icon.url)
-    embed.set_footer(text="Apple X Security System")
+    embed.set_footer(text="Apple X Security System", icon_url=bot.user.avatar.url if bot.user.avatar else None)
 
     await interaction.followup.send(embed=embed, ephemeral=True)
 
@@ -424,7 +543,8 @@ async def setup_panel(interaction: discord.Interaction):
             "-# *To copy your HWID in-game, run the helper command:* \n"
             "-# `setclipboard(game:GetService('RbxAnalyticsService'):GetClientId())`"
         ),
-        color=0x2b2d31
+        color=0x2b2d31,
+        timestamp=datetime.datetime.now(datetime.timezone.utc)
     )
     embed.set_footer(text="Apple X Security System", icon_url=bot.user.avatar.url if bot.user.avatar else None)
     
@@ -442,11 +562,12 @@ async def setup_buy_panel(interaction: discord.Interaction):
     embed = discord.Embed(
         title="🍏 How to Get Apple X Premium Access",
         description=(
-            "Want to unlock lifetime premium bypasses and elite scripts in Highway Legends? "
+            "Want to unlock lifetime key and more scripts? "
             "Choose one of the methods below to gain instant access!\n\n"
             "---"
         ),
-        color=0x9F33FF # Couleur violette élégante pour Booster/Premium
+        color=0xbf5af2,
+        timestamp=datetime.datetime.now(datetime.timezone.utc)
     )
     
     embed.add_field(
@@ -477,7 +598,7 @@ async def setup_buy_panel(interaction: discord.Interaction):
         inline=False
     )
     
-    embed.set_footer(text="Apple X Security System", icon_url=bot.user.avatar.url if bot.user.avatar else None)
+    embed.set_footer(text="Apple X Store System", icon_url=bot.user.avatar.url if bot.user.avatar else None)
     
     # Envoie le panneau de manière anonyme dans le salon
     await interaction.channel.send(embed=embed, view=BuyView())
