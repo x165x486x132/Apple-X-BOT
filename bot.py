@@ -17,11 +17,11 @@ GH_API_TOKEN = os.getenv("GH_API_TOKEN")
 STATS_CHANNEL_ID = os.getenv("CHANNEL_ID")
 
 # --- WHITELIST CONFIGURATION ---
-REPO_NAME = "x165x486x132/Apple-X-Key"    
+REPO_NAME = "x165x486x132/Apple-X-Key"    # Ton dépôt public officiel
 FILE_PATH = "hwid_db.json"               
-ROLE_PREMIUM_ID = 1498644209840951468    # Premium/Booster Role ID
-ROLE_BOOSTER_ID = 1055452140522446889    # Second Booster Role ID
-PREMIUM_GAMEPASS_ID = 1817589078         # Roblox GamePass ID for the Purchase panel button
+ROLE_PREMIUM_ID = 1498644209840951468    # Rôle Booster/Premium (Donné après achat)
+ROLE_BOOSTER_ID = 1055452140522446889    # Second Rôle Booster (Boosters de serveur)
+PREMIUM_GAMEPASS_ID = 1817589078         # ID de ton GamePass Roblox pour l'achat Premium
 
 # --- ANTI-MALICIOUS LINK CONFIGURATION ---
 FORBIDDEN_FILENAMES = [
@@ -74,7 +74,7 @@ class WhitelistModal(ui.Modal):
         super().__init__(title=f"Apple X {role_type} Whitelist")
         self.role_type = role_type
         
-        # 🟢 Unique Input Field: Roblox HWID only (No Username required)
+        # Unique Input Field: Roblox HWID only (No Username required)
         self.hwid_input = ui.TextInput(
             label="Roblox HWID",
             placeholder="Paste your Roblox ClientId/HWID here...",
@@ -103,13 +103,20 @@ class WhitelistModal(ui.Modal):
         
         success = update_github_db(db, sha)
         if success:
-            loader = '```lua\nloadstring(game:HttpGet("https://raw.githubusercontent.com/x165x486x132/AppleX/refs/heads/main/Game5"))()\n```'
+            # 🟢 On génère les deux loader de manière claire dans l'embed de succès !
+            loader_police = '```lua\nloadstring(game:HttpGet("https://raw.githubusercontent.com/x165x486x132/AppleX/refs/heads/main/Game5"))()\n```'
+            loader_scp = '```lua\nloadstring(game:HttpGet("https://raw.githubusercontent.com/x165x486x132/AppleX/refs/heads/main/Game6"))()\n```'
+            
             embed = discord.Embed(
-                title=f"🍏 Whitelisted successfully as {self.role_type}!",
-                description=f"Welcome to Apple X, {interaction.user.mention}!\n\n**Registered HWID:** `{cleaned_hwid}`\n\nYou can now execute the loader script directly in Roblox to claim your items:",
+                title=f"🍏 Purchase Registered successfully as {self.role_type}!",
+                description=f"Thank you for your support, {interaction.user.mention}!\n\n**Registered HWID:** `{cleaned_hwid}`\n\nYou can now execute your respective loader script directly in Roblox:",
                 color=0x57F287
             )
-            embed.add_field(name="📜 Loader Script", value=loader, inline=False)
+            
+            # Ajout des deux champs pour chaque jeu
+            embed.add_field(name="🚔 Police Roleplay", value=loader_police, inline=False)
+            embed.add_field(name="🧬 SCP: Roleplay", value=loader_scp, inline=False)
+            
             await interaction.followup.send(embed=embed, ephemeral=True)
         else:
             await interaction.followup.send("❌ Error saving to GitHub database. Please check if `GH_API_TOKEN` is configured correctly.", ephemeral=True)
@@ -422,87 +429,6 @@ async def setup_panel(interaction: discord.Interaction):
     embed.set_footer(text="Apple X Security System", icon_url=bot.user.avatar.url if bot.user.avatar else None)
     
     await interaction.channel.send(embed=embed, view=WhitelistView())
-
-# =========================================================================
-# ⚠️ 🟢 NEW ADMIN COMMAND: SETUP THE LEGAL DISCLAIMER PANEL (ANONYMOUS & AUTOREACT)
-# =========================================================================
-@bot.tree.command(name="setup_disclaimer", description="Send the Legal Disclaimer & Terms of Service (Admin only)")
-@app_commands.checks.has_permissions(administrator=True)
-async def setup_disclaimer(interaction: discord.Interaction):
-    # Répond de manière éphémère pour confirmer à l'admin
-    await interaction.response.send_message("✅ Legal disclaimer panel successfully sent anonymously!", ephemeral=True)
-    
-    # Premier Embed : L'en-tête de conformité
-    embed1 = discord.Embed(
-        title="⚠️ LEGAL DISCLAIMER & TERMS OF SERVICE",
-        description=(
-            "This community, repository, and associated code templates (collectively referred to as \"Apple X\") "
-            "are provided strictly for **educational, Luau API research, and private testing purposes**.\n\n"
-            "By utilizing our scripts or remaining in this community, you agree to these binding terms:"
-        ),
-        color=0x2b2d31 # Couleur thème sombre Discord
-    )
-    embed1.set_author(name="Apple X — Educational Luau Scripts & Research Project")
-    
-    # Deuxième Embed : Spécification des Scripts et Acceptation des ToS
-    embed2 = discord.Embed(
-        title="⚖️ Operational Boundaries & ToS Compliance",
-        description="Please review our terms of use carefully before proceeding:",
-        color=0x57F287 # Couleur verte pour l'aspect conformité
-    )
-    
-    embed2.add_field(
-        name="📦 No Software Distribution",
-        value=(
-            "Apple X does **NOT** develop, distribute, or host any software, executors, or client-side "
-            "modification tools. We only write and share independent, open-source Luau scripts, "
-            "coding templates, and user-interface simulation concepts."
-        ),
-        inline=False
-    )
-    
-    embed2.add_field(
-        name="🤝 Full ToS Acceptance & Compliance",
-        value=(
-            "We fully acknowledge, accept, and support the Roblox Terms of Use (ToU) and the Discord "
-            "Terms of Service (ToS). Our educational scripts are developed with the strict intent of helping "
-            "programmers study client-side replication and local event signals. They are designed to be "
-            "executed solely in private, authorized development sandboxes."
-        ),
-        inline=False
-    )
-    
-    embed2.add_field(
-        name="🔴 No Public Exploiting or Cheating",
-        value=(
-            "Our Luau scripts are designed as proof-of-concept simulations. We do not support, promote, "
-            "or facilitate public exploiting, cheating, or gaining unfair advantages in public game servers. "
-            "Any user who executes these open-source templates in a public server does so in direct violation "
-            "of our community standards."
-        ),
-        inline=False
-    )
-    
-    embed2.add_field(
-        name="🛡️ Limitation of Liability",
-        value=(
-            "Since our scripts are open-source and executed locally by the end-user, the developers of Apple X "
-            "have no control over how they are used. We assume absolutely no liability for any misuse, "
-            "account moderation, or platform bans. Every user is solely responsible for their own actions."
-        ),
-        inline=False
-    )
-    
-    embed2.set_footer(text="Apple X Security System", icon_url=bot.user.avatar.url if bot.user.avatar else None)
-    
-    # Envoie la série d'embeds de manière anonyme dans le salon
-    message = await interaction.channel.send(embeds=[embed1, embed2])
-    
-    # 🟢 AJOUT : Le bot réagit automatiquement avec la coche verte ✅ sous le message !
-    try:
-        await message.add_reaction("✅")
-    except Exception as e:
-        print(f"⚠️ Failed to add reaction: {e}")
 
 # =========================================================================
 # 🛒 NEW ADMIN COMMAND: SETUP THE BUY INFO PANEL (ANONYMOUS)
